@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnVoltarWorkspace = document.getElementById('btn-voltar-workspace');
     const btnCopiar = document.getElementById('btn-copiar');
 
-    // Estrutura de dados em memória
     let parsedData = [];
 
     // --- FUNÇÕES DE NAVEGAÇÃO ---
@@ -32,48 +31,59 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- PARSER: Transforma texto em dados estruturados ---
+    // --- PARSER BLINDADO (RegEx e Tokenização) ---
     function parseRawText(text) {
         const result = [];
-        // Divide o texto pelos blocos principais de Depoimento
-        const parts = text.split(/> 📋 Depoimento de /);
+        
+        // 1. Limpeza brutal para evitar problemas de formatação da IA
+        // Troca variações de marcadores por TOKENS absolutos e limpos.
+        // O RegEx abaixo ignora marcações de citação (>), espaços extras e negritos (**)
+        let normalizedText = text.replace(/(?:>|\*\*)*\s*📋\s*Depoimento de\s*(?:\*\*|:)?/gi, '|||PARTICIPANTE|||');
+        normalizedText = normalizedText.replace(/(?:\*\*)*\s*📌\s*Tema:\s*(?:\*\*|:)?/gi, '|||TEMA|||');
+
+        // 2. Separa por participantes
+        const parts = normalizedText.split('|||PARTICIPANTE|||');
         
         parts.forEach(part => {
-            if (!part.trim()) return;
+            if (!part.trim() || !part.includes('|||TEMA|||')) return;
 
-            // Extrai o nome do participante e seu cargo/papel
-            const firstLineEnd = part.indexOf('\n');
-            const participantInfo = part.substring(0, firstLineEnd).trim();
-            const restOfPart = part.substring(firstLineEnd);
+            // Extrai o nome do participante (Tudo até o primeiro TEMA)
+            const firstThemeIndex = part.indexOf('|||TEMA|||');
+            const participantInfo = part.substring(0, firstThemeIndex)
+                                        .replace(/---/g, '') // remove hifens
+                                        .replace(/\n/g, '')  // remove quebras de linha no nome
+                                        .trim();
+            
+            const restOfPart = part.substring(firstThemeIndex);
 
-            // Divide os temas dentro deste participante
-            const themesRaw = restOfPart.split(/📌 Tema: /);
+            // 3. Separa por temas
+            const themesRaw = restOfPart.split('|||TEMA|||');
             const themes = [];
 
             themesRaw.forEach(themePart => {
-                if (!themePart.trim() || themePart.includes('---')) return; // Ignora blocos de separação vazios
+                if (!themePart.trim()) return;
 
                 const themeTitleEnd = themePart.indexOf('\n');
-                const themeTitle = themePart.substring(0, themeTitleEnd).trim();
+                let themeTitle = themePart.substring(0, themeTitleEnd).trim();
                 let themeContent = themePart.substring(themeTitleEnd).trim();
 
-                // Limpeza rápida para remover "---" do final do conteúdo
+                // Limpa marcações e divisórias que sobram
+                themeTitle = themeTitle.replace(/\*\*/g, '').trim(); 
                 themeContent = themeContent.replace(/---+/g, '').trim();
 
                 if (themeTitle) {
-                    // ID único para salvar no localStorage (Base64 simples do nome + tema)
                     const uniqueId = btoa(unescape(encodeURIComponent(participantInfo + themeTitle))).substring(0, 15);
                     
                     themes.push({
                         id: uniqueId,
                         title: themeTitle,
                         content: formatDialogue(themeContent),
-                        rawContent: themeContent // Guardamos o original para edição
+                        rawContent: themeContent
                     });
                 }
             });
 
-            if (themes.length > 0) {
+            if (themes.length > 0 && participantInfo) {
                 result.push({
                     participant: participantInfo,
                     themes: themes
@@ -84,39 +94,50 @@ document.addEventListener('DOMContentLoaded', () => {
         return result;
     }
 
-    // Função auxiliar para estilizar os diálogos com HTML
+    // Estiliza os diálogos em tela
     function formatDialogue(content) {
         const lines = content.split('\n');
         return lines.map(line => {
+            // Remove espaços e limpa
+            line = line.trim();
+            if (!line) return '';
+            
+            // Pinta o nome do interlocutor se houver negrito
             if (line.startsWith('**')) {
                 const nameEndIndex = line.indexOf('**', 2) + 2;
-                const name = line.substring(0, nameEndIndex);
-                const text = line.substring(nameEndIndex);
-                return `<div class="dialogue-line">${name} ${text}</div>`;
+                if(nameEndIndex > 1) {
+                    const name = line.substring(0, nameEndIndex);
+                    const text = line.substring(nameEndIndex);
+                    return `<div class="dialogue-line"><strong>${name}</strong> ${text}</div>`;
+                }
             }
-            if (line.trim()) {
-                return `<div class="dialogue-line">${line}</div>`;
-            }
-            return '';
+            return `<div class="dialogue-line">${line}</div>`;
         }).join('');
     }
 
-    // --- RENDERIZADOR: Constrói os painéis visuais ---
+    // --- RENDERIZADOR ---
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
 
+        if (parsedData.length === 0) {
+            panelsContainer.innerHTML = `
+                <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center;">
+                    <i class="ri-error-warning-line" style="font-size: 2rem;"></i>
+                    <h3>Não encontramos os marcadores no texto!</h3>
+                    <p>Verifique se o texto possui os emojis <strong>📋 Depoimento de</strong> e <strong>📌 Tema:</strong></p>
+                </div>`;
+            return;
+        }
+
         parsedData.forEach(personBlock => {
-            // Bloco do Participante
             const blockDiv = document.createElement('div');
             blockDiv.classList.add('participant-block');
 
-            // Tag Preta e Amarela
             const tag = document.createElement('div');
             tag.classList.add('participant-tag');
             tag.innerHTML = `<i class="ri-user-voice-fill"></i> <span>${personBlock.participant}</span>`;
             blockDiv.appendChild(tag);
 
-            // Temas (Painéis Recolhíveis)
             personBlock.themes.forEach(theme => {
                 const savedTime = localStorage.getItem(`deg_time_${theme.id}`) || '';
 
@@ -140,13 +161,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Evento para Expandir/Recolher (apenas clicando no título)
                 const titleEl = panel.querySelector('.theme-title');
                 titleEl.addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Evento para Salvar Minutagem Automaticamente
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
@@ -166,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- GERAÇÃO DO RELATÓRIO FINAL ---
+    // --- GERAÇÃO DO RESUMO FINAL ---
     function generateFinalExport() {
         let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
         let hasMarkedThemes = false;
@@ -178,7 +197,6 @@ document.addEventListener('DOMContentLoaded', () => {
             personBlock.themes.forEach(theme => {
                 const savedTime = localStorage.getItem(`deg_time_${theme.id}`);
                 
-                // Só adiciona se tiver tempo preenchido
                 if (savedTime) {
                     hasMarkedThemes = true;
                     hasThemesForPerson = true;
@@ -198,7 +216,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!hasMarkedThemes) {
-            finalHtml = `<h3>Nenhum tema foi minutado. Volte e adicione horários nos campos de tempo.</h3>`;
+            finalHtml = `
+            <div style="text-align:center; padding: 50px; color: #666;">
+                <i class="ri-time-line" style="font-size: 3rem;"></i>
+                <h3>Nenhum tema foi minutado.</h3>
+                <p>Volte para a área de painéis e adicione horários (ex: 12:45) nas caixas à esquerda de cada tema.</p>
+            </div>`;
         }
 
         finalEditableContent.innerHTML = finalHtml;
@@ -231,7 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnCopiar.addEventListener('click', () => {
-        // Copia o texto do HTML renderizado (preserva formatação ao colar no Word)
         const range = document.createRange();
         range.selectNodeContents(finalEditableContent);
         const selection = window.getSelection();
