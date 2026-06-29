@@ -4,23 +4,16 @@ document.addEventListener('DOMContentLoaded', () => {
         workspace: document.getElementById('view-workspace'),
         export: document.getElementById('view-export')
     };
-    const headerActions = document.getElementById('header-actions');
-    const rawTextInput = document.getElementById('raw-text-input');
     const panelsContainer = document.getElementById('panels-container');
     const finalEditableContent = document.getElementById('final-editable-content');
 
-    const btnProcessar = document.getElementById('btn-processar');
-    const btnGerarResumo = document.getElementById('btn-gerar-resumo');
-    const btnVoltarInicio = document.getElementById('btn-voltar-inicio');
-    const btnVoltarWorkspace = document.getElementById('btn-voltar-workspace');
-    const btnCopiar = document.getElementById('btn-copiar');
-
-    let parsedData = [];
+    // Estado central da aplicação (Virtual DOM)
+    let linesState = [];
 
     // --- UTILITÁRIOS ---
     const storage = {
         get: (key) => { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } },
-        set: (key, val) => { try { localStorage.setItem(key, val); } catch (e) { console.warn('Storage bloqueado.'); } },
+        set: (key, val) => { try { localStorage.setItem(key, val); } catch (e) { } },
         remove: (key) => { try { localStorage.removeItem(key); } catch (e) { } }
     };
 
@@ -31,220 +24,208 @@ document.addEventListener('DOMContentLoaded', () => {
     function switchView(viewName) {
         Object.values(views).forEach(view => view.classList.remove('active'));
         views[viewName].classList.add('active');
-        headerActions.classList.toggle('hidden', viewName === 'input');
+        document.getElementById('header-actions').classList.toggle('hidden', viewName === 'input');
     }
 
-    // --- O PARSER CIRÚRGICO (Baseado em Delimitadores) ---
-    function parseRawText(text) {
-        const lines = text.split('\n');
-        const result = [];
-        let currentPerson = null;
-        let currentTheme = null;
-        let isExtracting = true;
+    // --- PARSER INICIAL (Tenta adivinhar, mas deixa a decisão final para o humano) ---
+    function processInitialText(rawText) {
+        const rawLines = rawText.split('\n');
+        
+        linesState = rawLines.map((line) => {
+            let clean = line.trim();
+            if (!clean) return null;
+            if (clean.toUpperCase().includes('ETAPA 2')) return 'STOP'; // Trava
 
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (!line) continue;
+            let type = 'text';
 
-            // 1. Tag de parada absoluta
-            if (line.includes('[FIM_DA_DEGRAVACAO]') || line.includes('ETAPA 2')) {
-                isExtracting = false;
-                break; 
-            }
+            // Auto-detecção permissiva (para poupar seu tempo)
+            if (clean.includes('📋') || clean.includes('>|') || clean.includes('[DEPOIMENTO]')) type = 'participant';
+            if (clean.includes('📌') || clean.includes('>#') || clean.includes('[TEMA]')) type = 'theme';
 
-            if (!isExtracting) continue;
+            // Limpa as sujeiras geradas pela IA
+            clean = clean.replace(/📋|📌|\[DEPOIMENTO\]|\[TEMA\]|>\||\|<|>#|#</gi, '')
+                         .replace(/Depoimento de/gi, '')
+                         .replace(/Tema:/gi, '')
+                         .replace(/\*\*/g, '')
+                         .replace(/^[:-]/, '')
+                         .trim();
 
-            // 2. Extração de Participante (Delimitadores: >| e |<)
-            if (line.includes('>|') && line.includes('|<')) {
-                const startIndex = line.indexOf('>|') + 2;
-                const endIndex = line.indexOf('|<');
-                
-                // Extrai exatamente o recheio e limpa ruídos
-                let name = line.substring(startIndex, endIndex)
-                               .replace(/📋/g, '')
-                               .replace(/Depoimento de/gi, '')
-                               .trim();
-                               
-                name = name.replace(/^[:-]/, '').trim();
-
-                currentPerson = { participant: name, themes: [] };
-                result.push(currentPerson);
-                currentTheme = null; // Reseta o tema para a nova pessoa
-                continue;
-            }
-
-            // 3. Extração de Tema (Delimitadores: ># e #<)
-            if (line.includes('>#') && line.includes('#<')) {
-                if (!currentPerson) continue; 
-
-                const startIndex = line.indexOf('>#') + 2;
-                const endIndex = line.indexOf('#<');
-                
-                let title = line.substring(startIndex, endIndex)
-                                .replace(/📌/g, '')
-                                .replace(/Tema:/gi, '')
-                                .trim();
-                
-                const uniqueId = generateSafeId(currentPerson.participant + title).substring(0, 30);
-                
-                currentTheme = {
-                    id: uniqueId,
-                    title: title,
-                    rawDialogue: [] 
-                };
-                currentPerson.themes.push(currentTheme);
-                continue;
-            }
-
-            // 4. Agrupamento de Diálogos
-            if (currentTheme) {
-                // Ignora linhas que são só markdown de divisória
-                if (line.match(/^---+$/)) continue; 
-                
-                // Transforma < e > literais em entidades HTML para o navegador não tentar renderizar
-                line = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                
-                currentTheme.rawDialogue.push(line);
-            }
-        }
-
-        // Processa o HTML de cada fala para destacar o locutor
-        result.forEach(person => {
-            person.themes.forEach(theme => {
-                theme.content = formatDialogue(theme.rawDialogue);
-            });
+            return {
+                rawText: line,
+                cleanText: clean,
+                type: type,
+                time: '',
+                isOpen: true
+            };
         });
 
-        // Retorna apenas se encontrou blocos válidos
-        return result.filter(p => p.themes.length > 0);
+        // Remove nulos e linhas após ETAPA 2
+        const stopIndex = linesState.indexOf('STOP');
+        if (stopIndex !== -1) linesState = linesState.slice(0, stopIndex);
+        linesState = linesState.filter(l => l !== null);
+
+        recalculateContext();
     }
 
-    function formatDialogue(linesArray) {
-        return linesArray.map(line => {
-            const cleanLine = line.replace(/\*\*/g, ''); 
-            const firstColon = cleanLine.indexOf(':');
-            
-            // Verifica se os dois pontos estão logo no início para indicar quem fala
-            if (firstColon > 0 && firstColon < 80) {
-                const speaker = cleanLine.substring(0, firstColon + 1);
-                const text = cleanLine.substring(firstColon + 1);
-                return `<div class="dialogue-line"><strong>${speaker}</strong>${text}</div>`;
+    // Vincula a minutagem do LocalStorage baseada no contexto atual (Participante + Tema)
+    function recalculateContext() {
+        let currentPart = 'desconhecido';
+        linesState.forEach(line => {
+            if (line.type === 'participant') {
+                currentPart = line.cleanText;
+            } else if (line.type === 'theme') {
+                line.storageKey = `deg_ui_${generateSafeId(currentPart + '_' + line.cleanText).substring(0, 30)}`;
+                line.time = storage.get(line.storageKey);
             }
-            return `<div class="dialogue-line">${cleanLine}</div>`;
-        }).join('');
+        });
     }
 
-    // --- RENDERIZAÇÃO NA TELA ---
+    // --- RENDERIZADOR DO WORKSPACE ---
     function renderWorkspace() {
-        panelsContainer.innerHTML = '';
+        let html = '';
+        let hideText = false;
 
-        if (parsedData.length === 0) {
-            panelsContainer.innerHTML = `
-                <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #fcc;">
-                    <i class="ri-error-warning-line" style="font-size: 2rem;"></i>
-                    <h3>Nenhum dado válido encontrado.</h3>
-                    <p>Verifique se o texto contém os delimitadores <strong>>| |<</strong> para as partes e <strong>># #<</strong> para os temas.</p>
-                </div>`;
+        if (linesState.length === 0) {
+            panelsContainer.innerHTML = `<div style="padding: 20px; text-align: center;">Nenhum texto inserido.</div>`;
             return;
         }
 
-        parsedData.forEach(personBlock => {
-            const blockDiv = document.createElement('div');
-            blockDiv.classList.add('participant-block');
+        linesState.forEach((line, i) => {
+            // Lógica de sanfona (Accordion)
+            if (line.type === 'participant') hideText = false;
+            else if (line.type === 'theme') hideText = !line.isOpen;
+            else if (line.type === 'text' && hideText) return; // Pula a renderização se o tema estiver fechado
 
-            const tag = document.createElement('div');
-            tag.classList.add('participant-tag');
-            tag.innerHTML = `<i class="ri-user-voice-fill"></i> <span>${personBlock.participant}</span>`;
-            blockDiv.appendChild(tag);
+            // Menu Flutuante de Edição Rápida
+            const controls = `
+                <div class="line-controls">
+                    <button class="btn-ctrl ${line.type === 'participant' ? 'active' : ''}" data-action="set-type" data-index="${i}" data-type="participant" title="Transformar em Participante">👤</button>
+                    <button class="btn-ctrl ${line.type === 'theme' ? 'active' : ''}" data-action="set-type" data-index="${i}" data-type="theme" title="Transformar em Tema">📌</button>
+                    <button class="btn-ctrl ${line.type === 'text' ? 'active' : ''}" data-action="set-type" data-index="${i}" data-type="text" title="Rebaixar para Texto Normal">💬</button>
+                </div>
+            `;
 
-            personBlock.themes.forEach(theme => {
-                const storageKey = `deg_v3_${theme.id}`;
-                const savedTime = storage.get(storageKey);
-
-                const panel = document.createElement('div');
-                panel.classList.add('theme-panel');
-                
-                panel.innerHTML = `
-                    <div class="theme-header">
+            let contentHTML = '';
+            if (line.type === 'participant') {
+                contentHTML = `<div class="participant-tag"><i class="ri-user-voice-fill"></i> <span>${line.cleanText}</span></div>`;
+            } else if (line.type === 'theme') {
+                contentHTML = `
+                    <div class="theme-panel">
                         <div class="time-input-container">
                             <i class="ri-time-line"></i>
-                            <input type="text" class="time-input ${savedTime ? 'filled' : ''}" 
-                                   placeholder="00:00" value="${savedTime}" 
-                                   title="Insira a minutagem">
+                            <input type="text" class="time-input ${line.time ? 'filled' : ''}" data-action="time" data-index="${i}" placeholder="00:00" value="${line.time}">
                         </div>
-                        <div class="theme-title">
-                            <span>${theme.title}</span> 
-                            <i class="ri-arrow-down-s-line"></i>
+                        <div class="theme-title" data-action="toggle" data-index="${i}">
+                            <span>${line.cleanText}</span> 
+                            <i class="ri-arrow-down-s-line" style="transform: ${line.isOpen ? 'rotate(180deg)' : 'rotate(0)'}"></i>
                         </div>
-                    </div>
-                    <div class="theme-content">
-                        ${theme.content}
-                    </div>
-                `;
+                    </div>`;
+            } else {
+                // Heurística visual de formatação do diálogo
+                let formattedText = line.rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const firstColon = formattedText.indexOf(':');
+                if (firstColon > 0 && firstColon < 60) {
+                    formattedText = `<strong>${formattedText.substring(0, firstColon + 1)}</strong>${formattedText.substring(firstColon + 1)}`;
+                }
+                contentHTML = `<div class="dialogue-content">${formattedText}</div>`;
+            }
 
-                // Expansão do painel
-                const titleEl = panel.querySelector('.theme-title');
-                titleEl.addEventListener('click', () => {
-                    panel.classList.toggle('open');
-                });
-
-                // Salvamento automático da minutagem
-                const inputEl = panel.querySelector('.time-input');
-                inputEl.addEventListener('input', (e) => {
-                    const val = e.target.value.trim();
-                    if (val) {
-                        storage.set(storageKey, val);
-                        e.target.classList.add('filled');
-                    } else {
-                        storage.remove(storageKey);
-                        e.target.classList.remove('filled');
-                    }
-                });
-
-                blockDiv.appendChild(panel);
-            });
-
-            panelsContainer.appendChild(blockDiv);
+            html += `<div class="line-row type-${line.type}">${controls}<div class="line-wrapper">${contentHTML}</div></div>`;
         });
+
+        panelsContainer.innerHTML = html;
     }
 
-    // --- GERAÇÃO DO RESUMO FINAL ---
+    // --- DELEGAÇÃO DE EVENTOS (Performance e Código Limpo) ---
+    panelsContainer.addEventListener('click', (e) => {
+        const btnType = e.target.closest('[data-action="set-type"]');
+        if (btnType) {
+            const index = parseInt(btnType.dataset.index);
+            linesState[index].type = btnType.dataset.type;
+            recalculateContext();
+            renderWorkspace();
+            return;
+        }
+
+        const btnToggle = e.target.closest('[data-action="toggle"]');
+        if (btnToggle) {
+            const index = parseInt(btnToggle.dataset.index);
+            linesState[index].isOpen = !linesState[index].isOpen;
+            renderWorkspace();
+        }
+    });
+
+    panelsContainer.addEventListener('input', (e) => {
+        const inputTime = e.target.closest('[data-action="time"]');
+        if (inputTime) {
+            const index = parseInt(inputTime.dataset.index);
+            const val = inputTime.value.trim();
+            const line = linesState[index];
+            
+            line.time = val;
+            if (val) {
+                storage.set(line.storageKey, val);
+                inputTime.classList.add('filled');
+            } else {
+                storage.remove(line.storageKey);
+                inputTime.classList.remove('filled');
+            }
+        }
+    });
+
+    // --- GERAÇÃO DO RESUMO FINAL (Estruturado em Árvore) ---
     function generateFinalExport() {
-        let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
-        let hasMarkedThemes = false;
+        let exportTree = [];
+        let currP = null;
+        let currT = null;
 
-        parsedData.forEach(personBlock => {
-            let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${personBlock.participant}</span></h2>`;
-            let hasThemesForPerson = false;
-
-            personBlock.themes.forEach(theme => {
-                const storageKey = `deg_v3_${theme.id}`;
-                const savedTime = storage.get(storageKey);
-                
-                if (savedTime) {
-                    hasMarkedThemes = true;
-                    hasThemesForPerson = true;
-                    
-                    personHtml += `
-                        <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${savedTime}] - 📌 ${theme.title}</h3>
-                        <div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">
-                            ${theme.content}
-                        </div>
-                    `;
-                }
-            });
-
-            if (hasThemesForPerson) {
-                finalHtml += personHtml + `<hr style="margin:20px 0;">`;
+        // Reconstrói a árvore baseado no estado linear
+        linesState.forEach(line => {
+            if (line.type === 'participant') {
+                currP = { name: line.cleanText, themes: [] };
+                exportTree.push(currP);
+                currT = null;
+            } else if (line.type === 'theme') {
+                if (!currP) return;
+                currT = { title: line.cleanText, time: line.time, texts: [] };
+                currP.themes.push(currT);
+            } else if (line.type === 'text') {
+                if (currT) currT.texts.push(line);
             }
         });
 
-        if (!hasMarkedThemes) {
+        let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
+        let hasData = false;
+
+        exportTree.forEach(person => {
+            const validThemes = person.themes.filter(t => t.time); // Só exporta se tiver tempo preenchido
+            if (validThemes.length === 0) return;
+
+            hasData = true;
+            finalHtml += `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${person.name}</span></h2>`;
+            
+            validThemes.forEach(theme => {
+                finalHtml += `<h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${theme.time}] - 📌 ${theme.title}</h3>`;
+                finalHtml += `<div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">`;
+                
+                theme.texts.forEach(textLine => {
+                    let text = textLine.rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const colon = text.indexOf(':');
+                    if (colon > 0 && colon < 60) text = `<strong>${text.substring(0, colon + 1)}</strong>${text.substring(colon + 1)}`;
+                    finalHtml += `<div style="margin-bottom:0.5rem;">${text}</div>`;
+                });
+                
+                finalHtml += `</div>`;
+            });
+            finalHtml += `<hr style="margin:20px 0;">`;
+        });
+
+        if (!hasData) {
             finalHtml = `
             <div style="text-align:center; padding: 50px; color: #666;">
                 <i class="ri-time-line" style="font-size: 3rem;"></i>
                 <h3>Nenhum tema foi minutado.</h3>
-                <p>Volte para a área de painéis e adicione horários (ex: 12:45) nas caixas à esquerda de cada tema.</p>
+                <p>Volte e adicione horários nas caixas de texto dos temas.</p>
             </div>`;
         }
 
@@ -252,57 +233,39 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('export');
     }
 
-    // --- CONTROLES DA INTERFACE ---
-    btnProcessar.addEventListener('click', () => {
-        try {
-            const text = rawTextInput.value;
-            if (!text.trim()) {
-                alert("Por favor, cole a degravação.");
-                return;
-            }
-            parsedData = parseRawText(text);
-            renderWorkspace();
-            switchView('workspace');
-        } catch (error) {
-            console.error(error);
-            alert("Erro inesperado no parser. Consulte o console para mais detalhes.");
-        }
+    // --- CONTROLES GERAIS ---
+    document.getElementById('btn-processar').addEventListener('click', () => {
+        const text = document.getElementById('raw-text-input').value;
+        if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
+        processInitialText(text);
+        renderWorkspace();
+        switchView('workspace');
     });
 
-    btnGerarResumo.addEventListener('click', generateFinalExport);
-
-    btnVoltarInicio.addEventListener('click', () => {
+    document.getElementById('btn-gerar-resumo').addEventListener('click', generateFinalExport);
+    
+    document.getElementById('btn-voltar-inicio').addEventListener('click', () => {
         if(confirm("Deseja importar um novo texto?")) {
-            rawTextInput.value = '';
+            document.getElementById('raw-text-input').value = '';
             switchView('input');
         }
     });
 
-    btnVoltarWorkspace.addEventListener('click', () => {
-        switchView('workspace');
-    });
+    document.getElementById('btn-voltar-workspace').addEventListener('click', () => switchView('workspace'));
 
-    btnCopiar.addEventListener('click', () => {
+    document.getElementById('btn-copiar').addEventListener('click', () => {
         const range = document.createRange();
         range.selectNodeContents(finalEditableContent);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
         
         try {
             document.execCommand('copy');
-            const originalHtml = btnCopiar.innerHTML;
-            btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
-            btnCopiar.classList.remove('btn-success');
-            btnCopiar.style.backgroundColor = "#219653"; 
-            
-            setTimeout(() => {
-                btnCopiar.innerHTML = originalHtml;
-                btnCopiar.style.backgroundColor = "";
-                selection.removeAllRanges();
-            }, 2500);
-        } catch (err) {
-            alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
-        }
+            const btn = document.getElementById('btn-copiar');
+            const orig = btn.innerHTML;
+            btn.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
+            btn.style.backgroundColor = "#219653"; 
+            setTimeout(() => { btn.innerHTML = orig; btn.style.backgroundColor = ""; window.getSelection().removeAllRanges(); }, 2500);
+        } catch (err) { alert('Falha ao copiar. Pressione Ctrl+C.'); }
     });
 });

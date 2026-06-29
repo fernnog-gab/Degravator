@@ -28,29 +28,30 @@
         <section id="view-input" class="view-section active">
             <div class="instructions">
                 <h2>Importar Degravação</h2>
-                <p>Cole abaixo o texto gerado contendo os marcadores <code>📋 Depoimento de...</code> e <code>📌 Tema: ...</code></p>
+                <p>Cole o texto bruto abaixo. A interface tentará organizar automaticamente, mas você poderá corrigir qualquer erro da IA com um clique na próxima tela.</p>
             </div>
-            <textarea id="raw-text-input" placeholder="Cole o texto bruto da degravação aqui..."></textarea>
+            <textarea id="raw-text-input" placeholder="Cole a degravação aqui..."></textarea>
             <button id="btn-processar" class="btn btn-primary btn-large">
-                <i class="ri-magic-line"></i> Organizar e Estilizar Painéis
+                <i class="ri-magic-line"></i> Processar e Abrir Editor
             </button>
         </section>
 
         <section id="view-workspace" class="view-section hidden">
             <div class="workspace-header">
-                <h2>Análise e Minutagem</h2>
-                <p>Expanda os temas e adicione o tempo (Ex: 12:05) nos campos à esquerda. O salvamento é automático.</p>
+                <h2>Edição e Minutagem</h2>
+                <p>Passe o mouse à esquerda de qualquer linha para transformá-la em um Participante (👤), Tema (📌) ou Texto Normal (💬). O salvamento da minutagem é automático.</p>
             </div>
-            <div id="panels-container"></div>
+            <div id="panels-container">
+                </div>
         </section>
 
         <section id="view-export" class="view-section hidden">
             <div class="export-header">
                 <h2>Resumo Final Editável</h2>
-                <p>Revise o texto, faça os ajustes finais e copie para sua minuta.</p>
+                <p>Revise o texto final gerado a partir das suas minutagens e copie para a sua minuta.</p>
                 <div class="export-actions">
                     <button id="btn-voltar-workspace" class="btn btn-outline">
-                        <i class="ri-arrow-left-line"></i> Voltar aos Painéis
+                        <i class="ri-arrow-left-line"></i> Voltar à Edição
                     </button>
                     <button id="btn-copiar" class="btn btn-success">
                         <i class="ri-clipboard-line"></i> Copiar Texto
