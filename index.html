@@ -15,11 +15,8 @@
             <span>Sistematizador de Degravações</span>
         </div>
         <div id="header-actions" class="hidden">
-            <button id="btn-gerar-resumo" class="btn btn-primary">
-                <i class="ri-filter-3-line"></i> Gerar Resumo (Apenas Marcados)
-            </button>
             <button id="btn-voltar-inicio" class="btn btn-outline">
-                <i class="ri-arrow-go-back-line"></i> Nova Degravação
+                <i class="ri-arrow-go-back-line"></i> Início
             </button>
         </div>
     </header>
@@ -28,18 +25,40 @@
         <section id="view-input" class="view-section active">
             <div class="instructions">
                 <h2>Importar Degravação</h2>
-                <p>Cole o texto bruto abaixo. A interface tentará organizar automaticamente, mas você poderá corrigir qualquer erro da IA com um clique na próxima tela.</p>
+                <p>Cole o texto bruto. Na próxima tela, você definirá manualmente o que é Parte, Tema ou Texto.</p>
             </div>
             <textarea id="raw-text-input" placeholder="Cole a degravação aqui..."></textarea>
-            <button id="btn-processar" class="btn btn-primary btn-large">
-                <i class="ri-magic-line"></i> Processar e Abrir Editor
+            <button id="btn-preparar" class="btn btn-primary btn-large">
+                <i class="ri-list-check"></i> Iniciar Marcação Manual
             </button>
+        </section>
+
+        <section id="view-tagging" class="view-section hidden">
+            <div class="workspace-header">
+                <h2>Classificação de Linhas</h2>
+                <p>Clique nos botões à esquerda de cada linha para classificá-las. As linhas marcadas como "Texto" serão agrupadas dentro do último Tema marcado.</p>
+                <div class="action-bar-top">
+                    <button id="btn-montar-paineis" class="btn btn-success btn-large">
+                        <i class="ri-layout-masonry-line"></i> Montar Painéis com a Marcação
+                    </button>
+                </div>
+            </div>
+            <div id="tagging-list" class="tagging-container">
+                </div>
         </section>
 
         <section id="view-workspace" class="view-section hidden">
             <div class="workspace-header">
-                <h2>Edição e Minutagem</h2>
-                <p>Passe o mouse à esquerda de qualquer linha para transformá-la em um Participante (👤), Tema (📌) ou Texto Normal (💬). O salvamento da minutagem é automático.</p>
+                <h2>Minutagem</h2>
+                <p>Insira a minutagem nos temas desejados. O salvamento é automático.</p>
+                <div class="action-bar-top">
+                    <button id="btn-voltar-tagging" class="btn btn-outline" style="color: var(--primary-color); border-color: var(--primary-color);">
+                        <i class="ri-edit-line"></i> Voltar à Marcação
+                    </button>
+                    <button id="btn-gerar-resumo" class="btn btn-primary">
+                        <i class="ri-filter-3-line"></i> Gerar Resumo
+                    </button>
+                </div>
             </div>
             <div id="panels-container">
                 </div>
@@ -48,10 +67,10 @@
         <section id="view-export" class="view-section hidden">
             <div class="export-header">
                 <h2>Resumo Final Editável</h2>
-                <p>Revise o texto final gerado a partir das suas minutagens e copie para a sua minuta.</p>
+                <p>Revise o texto final e copie para sua minuta.</p>
                 <div class="export-actions">
-                    <button id="btn-voltar-workspace" class="btn btn-outline">
-                        <i class="ri-arrow-left-line"></i> Voltar à Edição
+                    <button id="btn-voltar-workspace" class="btn btn-outline" style="color: var(--primary-color); border-color: var(--primary-color);">
+                        <i class="ri-arrow-left-line"></i> Voltar aos Painéis
                     </button>
                     <button id="btn-copiar" class="btn btn-success">
                         <i class="ri-clipboard-line"></i> Copiar Texto

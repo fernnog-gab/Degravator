@@ -19,10 +19,9 @@ body { background-color: var(--bg-color); color: var(--text-color); line-height:
 
 .container { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
 
-.view-section { display: none; animation: fadeIn 0.3s ease-in-out; }
+.view-section { display: none; animation: fadeIn 0.2s ease-in-out; }
 .view-section.active { display: block; }
-
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
 textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1rem; resize: vertical; margin-bottom: 1rem; }
 
@@ -33,79 +32,60 @@ textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--bo
 .btn-success:hover { background-color: #219653; }
 .btn-outline { background-color: transparent; border: 1px solid white; color: white; }
 .btn-outline:hover { background-color: rgba(255,255,255,0.1); }
-#view-export .btn-outline { border-color: var(--primary-color); color: var(--primary-color); }
 .btn-large { font-size: 1.1rem; padding: 1rem 2rem; width: 100%; justify-content: center; }
 
-/* --- EDITOR INTERATIVO --- */
 .workspace-header { margin-bottom: 2rem; }
+.action-bar-top { margin-top: 1rem; display: flex; gap: 1rem; }
 
-#panels-container {
-    padding-left: 120px; /* Dá espaço para os botões flutuantes */
-}
+/* --- TELA DE MARCAÇÃO MANUAL --- */
+.tagging-container { background: white; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; }
+.tag-row { display: flex; align-items: stretch; border-bottom: 1px solid #eee; padding: 0.5rem 0; transition: background 0.2s; }
+.tag-row:last-child { border-bottom: none; }
+.tag-row:hover { background-color: #f8f9fa; }
 
-.line-row {
-    position: relative;
-    margin-bottom: 0.3rem;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-}
+.tag-controls { display: flex; gap: 4px; margin-right: 15px; flex-shrink: 0; align-items: flex-start; }
+.t-btn { background: #f1f3f5; border: 1px solid #ced4da; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; color: #495057; transition: all 0.15s; }
+.t-btn:hover { background: #e9ecef; }
 
-.line-row:hover { background-color: #e9ecef; }
+/* Estados Visuais das Linhas de Marcação */
+.tag-row.type-participant { background-color: #fff9e6; border-left: 4px solid var(--tag-bg); }
+.tag-row.type-participant .t-btn.btn-p { background-color: var(--tag-bg); color: var(--tag-text); border-color: var(--tag-bg); }
+.tag-row.type-participant .tag-content { font-weight: bold; font-size: 1.1rem; }
 
-/* Identação visual baseada no tipo */
-.line-row.type-participant { margin-top: 2.5rem; margin-bottom: 1rem; }
-.line-row.type-theme { margin-top: 1rem; margin-bottom: 0.5rem; }
-.line-row.type-text { margin-left: 2rem; }
+.tag-row.type-theme { background-color: #e3f2fd; border-left: 4px solid #1976d2; }
+.tag-row.type-theme .t-btn.btn-t { background-color: #1976d2; color: white; border-color: #1976d2; }
+.tag-row.type-theme .tag-content { font-weight: bold; color: #1976d2; }
 
-/* Controles de Marcação Manual */
-.line-controls {
-    position: absolute;
-    left: -110px;
-    top: 50%;
-    transform: translateY(-50%);
-    display: flex;
-    gap: 4px;
-    background: white;
-    padding: 4px;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    opacity: 0.1;
-    transition: opacity 0.2s ease;
-    z-index: 10;
-}
+.tag-row.type-text .t-btn.btn-txt { background-color: #6c757d; color: white; border-color: #6c757d; }
 
-.line-row:hover .line-controls { opacity: 1; }
+.tag-row.type-ignore { opacity: 0.4; }
+.tag-row.type-ignore .t-btn.btn-i { background-color: #dc3545; color: white; border-color: #dc3545; }
+.tag-row.type-ignore .tag-content { text-decoration: line-through; }
 
-.btn-ctrl {
-    background: transparent;
-    border: 1px solid transparent;
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 4px 6px;
-    border-radius: 4px;
-    filter: grayscale(100%);
-    opacity: 0.6;
-    transition: all 0.2s;
-}
+.tag-content { flex-grow: 1; padding: 4px 0; word-break: break-word; }
 
-.btn-ctrl:hover { filter: grayscale(0%); opacity: 1; background-color: #f1f3f5; }
-.btn-ctrl.active { filter: grayscale(0%); opacity: 1; background-color: #e8f5e9; border-color: var(--success-color); color: var(--success-color); }
-
-/* Visuais dos Blocos */
-.participant-tag { background-color: var(--tag-bg); color: var(--tag-text); display: inline-flex; align-items: center; gap: 8px; padding: 0.5rem 1rem; border-radius: 4px; font-size: 1.1rem; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+/* --- TELA DE PAINÉIS --- */
+.participant-block { margin-bottom: 2rem; }
+.participant-tag { background-color: var(--tag-bg); color: var(--tag-text); display: inline-flex; align-items: center; gap: 8px; padding: 0.5rem 1rem; border-radius: 4px; font-size: 1.1rem; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 1rem; }
 .participant-tag i { color: white; }
 
-.theme-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; display: flex; align-items: center; padding: 0.6rem 1rem; }
+.theme-panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; margin-bottom: 0.8rem; }
+.theme-header { display: flex; align-items: center; padding: 0.8rem 1rem; background-color: #f8f9fa; border-bottom: 1px solid transparent; }
 .time-input-container { margin-right: 1rem; display: flex; align-items: center; gap: 0.3rem; }
 .time-input { width: 80px; padding: 0.4rem; border: 1px solid var(--border-color); border-radius: 4px; text-align: center; font-family: monospace; font-size: 1rem; }
 .time-input.filled { background-color: #e8f5e9; border-color: var(--success-color); }
 .theme-title { flex-grow: 1; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
 .theme-title i { transition: transform 0.3s; }
+.theme-panel.open .theme-title i { transform: rotate(180deg); }
+.theme-panel.open .theme-header { border-bottom-color: var(--border-color); }
 
-.dialogue-content { padding-left: 1rem; border-left: 3px solid #ccc; background-color: white; padding: 0.8rem 1rem; border-radius: 0 4px 4px 0; }
-.dialogue-content strong { color: var(--primary-color); }
+.theme-content { display: none; padding: 1rem; background-color: white; }
+.theme-panel.open .theme-content { display: block; }
 
-/* Área de Edição Final */
+.dialogue-line { margin-bottom: 0.5rem; padding-left: 1rem; border-left: 3px solid #eee; }
+.dialogue-line strong { color: var(--primary-color); }
+
+/* --- TELA DE EXPORTAÇÃO --- */
 .export-header { margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; }
 .editable-area { background: white; padding: 2rem; border: 2px dashed var(--border-color); border-radius: 8px; min-height: 500px; outline: none; }
 .editable-area:focus { border-color: var(--primary-color); }
