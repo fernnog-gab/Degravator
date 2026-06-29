@@ -31,78 +31,84 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- PARSER BLINDADO (RegEx e Tokenização) ---
+    // --- NOVO PARSER "RELAXADO" (Linha a Linha) ---
     function parseRawText(text) {
+        const lines = text.split('\n');
         const result = [];
-        
-        // 1. Limpeza brutal para evitar problemas de formatação da IA
-        // Troca variações de marcadores por TOKENS absolutos e limpos.
-        // O RegEx abaixo ignora marcações de citação (>), espaços extras e negritos (**)
-        let normalizedText = text.replace(/(?:>|\*\*)*\s*📋\s*Depoimento de\s*(?:\*\*|:)?/gi, '|||PARTICIPANTE|||');
-        normalizedText = normalizedText.replace(/(?:\*\*)*\s*📌\s*Tema:\s*(?:\*\*|:)?/gi, '|||TEMA|||');
+        let currentPerson = null;
+        let currentTheme = null;
 
-        // 2. Separa por participantes
-        const parts = normalizedText.split('|||PARTICIPANTE|||');
-        
-        parts.forEach(part => {
-            if (!part.trim() || !part.includes('|||TEMA|||')) return;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
 
-            // Extrai o nome do participante (Tudo até o primeiro TEMA)
-            const firstThemeIndex = part.indexOf('|||TEMA|||');
-            const participantInfo = part.substring(0, firstThemeIndex)
-                                        .replace(/---/g, '') // remove hifens
-                                        .replace(/\n/g, '')  // remove quebras de linha no nome
-                                        .trim();
-            
-            const restOfPart = part.substring(firstThemeIndex);
-
-            // 3. Separa por temas
-            const themesRaw = restOfPart.split('|||TEMA|||');
-            const themes = [];
-
-            themesRaw.forEach(themePart => {
-                if (!themePart.trim()) return;
-
-                const themeTitleEnd = themePart.indexOf('\n');
-                let themeTitle = themePart.substring(0, themeTitleEnd).trim();
-                let themeContent = themePart.substring(themeTitleEnd).trim();
-
-                // Limpa marcações e divisórias que sobram
-                themeTitle = themeTitle.replace(/\*\*/g, '').trim(); 
-                themeContent = themeContent.replace(/---+/g, '').trim();
-
-                if (themeTitle) {
-                    const uniqueId = btoa(unescape(encodeURIComponent(participantInfo + themeTitle))).substring(0, 15);
-                    
-                    themes.push({
-                        id: uniqueId,
-                        title: themeTitle,
-                        content: formatDialogue(themeContent),
-                        rawContent: themeContent
-                    });
-                }
-            });
-
-            if (themes.length > 0 && participantInfo) {
-                result.push({
-                    participant: participantInfo,
-                    themes: themes
-                });
+            // TRAVA DE SEGURANÇA: Se chegar na Etapa 2, para de extrair (evita sujeira)
+            if (line.includes('ETAPA 2') || line.includes('RELATÓRIO ANALÍTICO')) {
+                break;
             }
+
+            // 1. Encontrou a prancheta? É um novo participante.
+            if (line.includes('📋')) {
+                // Limpa tudo que não interessa, pegando só o nome
+                let name = line.replace(/📋/g, '')
+                               .replace(/Depoimento de/gi, '')
+                               .replace(/[\*\*>]/g, '') // remove asteriscos e sinais de maior
+                               .trim();
+                
+                // Remove dois pontos ou hífens no começo, se houver
+                name = name.replace(/^[:-]/, '').trim();
+
+                currentPerson = { participant: name, themes: [] };
+                result.push(currentPerson);
+                currentTheme = null; // Reseta o tema pois mudou a pessoa
+                continue;
+            }
+
+            // 2. Encontrou o alfinete? É um novo tema.
+            if (line.includes('📌')) {
+                if (!currentPerson) continue; // Ignora se a IA colocou tema antes da pessoa
+
+                // Limpa sujeiras do título do tema
+                let title = line.replace(/📌/g, '')
+                                .replace(/Tema:/gi, '')
+                                .replace(/[\*\*>]/g, '')
+                                .trim();
+                
+                // Cria um ID único para salvar o tempo
+                const uniqueId = btoa(unescape(encodeURIComponent(currentPerson.participant + title))).substring(0, 15);
+
+                currentTheme = {
+                    id: uniqueId,
+                    title: title,
+                    rawDialogue: [] // Vai guardar as falas temporariamente
+                };
+                currentPerson.themes.push(currentTheme);
+                continue;
+            }
+
+            // 3. Se não é participante nem tema, e tem um tema aberto, é fala (diálogo)!
+            if (currentTheme) {
+                // Ignora linhas que são só tracinhos "---"
+                if (line.match(/^---+$/)) continue;
+                
+                currentTheme.rawDialogue.push(line);
+            }
+        }
+
+        // Processa os diálogos brutos para HTML formatado
+        result.forEach(person => {
+            person.themes.forEach(theme => {
+                theme.content = formatDialogue(theme.rawDialogue);
+            });
         });
 
-        return result;
+        // Retorna apenas participantes que tenham pelo menos 1 tema
+        return result.filter(p => p.themes.length > 0);
     }
 
-    // Estiliza os diálogos em tela
-    function formatDialogue(content) {
-        const lines = content.split('\n');
-        return lines.map(line => {
-            // Remove espaços e limpa
-            line = line.trim();
-            if (!line) return '';
-            
-            // Pinta o nome do interlocutor se houver negrito
+    // Estiliza os diálogos (deixa o nome do falante em destaque)
+    function formatDialogue(linesArray) {
+        return linesArray.map(line => {
             if (line.startsWith('**')) {
                 const nameEndIndex = line.indexOf('**', 2) + 2;
                 if(nameEndIndex > 1) {
@@ -121,10 +127,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (parsedData.length === 0) {
             panelsContainer.innerHTML = `
-                <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center;">
+                <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #fcc;">
                     <i class="ri-error-warning-line" style="font-size: 2rem;"></i>
-                    <h3>Não encontramos os marcadores no texto!</h3>
-                    <p>Verifique se o texto possui os emojis <strong>📋 Depoimento de</strong> e <strong>📌 Tema:</strong></p>
+                    <h3>Nenhum dado encontrado!</h3>
+                    <p>Certifique-se de que o texto colado contém os emojis <strong>📋</strong> para as partes e <strong>📌</strong> para os temas.</p>
                 </div>`;
             return;
         }
@@ -232,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnProcessar.addEventListener('click', () => {
         const text = rawTextInput.value;
         if (!text.trim()) {
-            alert("Por favor, cole a degravação gerada pelo NotebookLM.");
+            alert("Por favor, cole a degravação.");
             return;
         }
         parsedData = parseRawText(text);
@@ -243,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGerarResumo.addEventListener('click', generateFinalExport);
 
     btnVoltarInicio.addEventListener('click', () => {
-        if(confirm("Iniciar nova degravação? (Os tempos da degravação atual não serão apagados da memória do navegador automaticamente).")) {
+        if(confirm("Deseja importar um novo texto?")) {
             rawTextInput.value = '';
             switchView('input');
         }
@@ -262,14 +268,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             document.execCommand('copy');
-            btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado com Sucesso!`;
+            btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
             btnCopiar.style.backgroundColor = "#219653";
             setTimeout(() => {
                 btnCopiar.innerHTML = `<i class="ri-clipboard-line"></i> Copiar para Área de Transferência`;
                 btnCopiar.style.backgroundColor = "";
             }, 3000);
         } catch (err) {
-            alert('Falha ao copiar. Tente selecionar o texto e copiar manualmente (Ctrl+C).');
+            alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
         }
     });
 });
