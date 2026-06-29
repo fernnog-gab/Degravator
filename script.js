@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Referências do DOM
     const views = {
         input: document.getElementById('view-input'),
         workspace: document.getElementById('view-workspace'),
@@ -17,7 +18,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let parsedData = [];
 
-    // Gerencia a transição de telas
+    // --- FUNÇÕES UTILITÁRIAS ---
+
+    // Gerenciador de LocalStorage à prova de falhas (evita crash em file:///)
+    const storage = {
+        get: (key) => {
+            try { return localStorage.getItem(key) || ''; } 
+            catch (e) { return ''; }
+        },
+        set: (key, val) => {
+            try { localStorage.setItem(key, val); } 
+            catch (e) { console.warn('Salvamento local bloqueado pelo navegador.'); }
+        },
+        remove: (key) => {
+            try { localStorage.removeItem(key); } 
+            catch (e) { }
+        }
+    };
+
+    // Gera IDs seguros sem usar btoa() que pode falhar com acentuação
+    function generateSafeId(str) {
+        return str.normalize("NFD")
+                  .replace(/[\u0300-\u036f]/g, "") // Remove acentos
+                  .replace(/[^a-zA-Z0-9]/g, '_')   // Mantém só alfanuméricos
+                  .toLowerCase();
+    }
+
+    // --- NAVEGAÇÃO ---
     function switchView(viewName) {
         Object.values(views).forEach(view => view.classList.remove('active'));
         views[viewName].classList.add('active');
@@ -29,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Parser à prova de falhas: ignora formatação Markdown e confia apenas nos emojis e limites definidos
+    // --- PARSER ---
     function parseRawText(text) {
         const lines = text.split('\n');
         const result = [];
@@ -40,17 +67,17 @@ document.addEventListener('DOMContentLoaded', () => {
             let line = lines[i].trim();
             if (!line) continue;
 
-            // Encerra imediatamente ao encontrar o marcador da Etapa 2
-            if (line.includes('ETAPA 2') || line.includes('RELATÓRIO ANALÍTICO')) {
+            // Trava de segurança: Encerra ao atingir etapas posteriores
+            if (line.toUpperCase().includes('ETAPA 2') || line.toUpperCase().includes('RELATÓRIO ANALÍTICO')) {
                 break;
             }
 
-            // Novo Participante
+            // Novo Participante (📋)
             if (line.includes('📋')) {
                 let name = line.replace(/📋/g, '')
                                .replace(/Depoimento de/gi, '')
-                               .replace(/[\*#>]/g, '') // Remove ruídos comuns de markdown
-                               .replace(/^[:-]/, '')  // Remove traços/dois pontos iniciais
+                               .replace(/[\*#>]/g, '')
+                               .replace(/^[:-]/, '')
                                .trim();
 
                 currentPerson = { participant: name, themes: [] };
@@ -59,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 continue;
             }
 
-            // Novo Tema
+            // Novo Tema (📌)
             if (line.includes('📌')) {
                 if (!currentPerson) continue; 
 
@@ -68,8 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 .replace(/[\*#>]/g, '')
                                 .trim();
                 
-                // Gera uma chave segura para o LocalStorage
-                const uniqueId = btoa(unescape(encodeURIComponent(currentPerson.participant + title))).substring(0, 20);
+                const uniqueId = generateSafeId(currentPerson.participant + title).substring(0, 30);
 
                 currentTheme = {
                     id: uniqueId,
@@ -80,13 +106,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 continue;
             }
 
-            // Falas / Diálogos
+            // Diálogos da Degravação
             if (currentTheme) {
-                if (line.match(/^---+$/)) continue; // Ignora divisores horizontais isolados
+                if (line.match(/^---+$/)) continue; // Ignora divisores horizontais 
+                
+                // Sanitiza tags < e > acidentais (ex: <DEGRAVAÇÃO>) para não quebrar o DOM
+                line = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
                 currentTheme.rawDialogue.push(line);
             }
         }
 
+        // Processa o HTML de cada fala
         result.forEach(person => {
             person.themes.forEach(theme => {
                 theme.content = formatDialogue(theme.rawDialogue);
@@ -96,16 +127,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return result.filter(p => p.themes.length > 0);
     }
 
-    // Aplica negrito aos interlocutores com base na posição dos "dois pontos", dispensando RegEx de Markdown
+    // Identifica quem está falando e aplica negrito
     function formatDialogue(linesArray) {
         return linesArray.map(line => {
-            // Remove o markdown nativo caso a LLM tenha gerado parcialmente
             const cleanLine = line.replace(/\*\*/g, ''); 
-            
             const firstColon = cleanLine.indexOf(':');
             
-            // Se houver dois pontos na primeira parte da string (limite razoável de 60 caracteres)
-            if (firstColon > 0 && firstColon < 60) {
+            // Heurística: se houver dois pontos no início da frase, é a indicação de interlocutor
+            if (firstColon > 0 && firstColon < 80) {
                 const speaker = cleanLine.substring(0, firstColon + 1);
                 const text = cleanLine.substring(firstColon + 1);
                 return `<div class="dialogue-line"><strong>${speaker}</strong>${text}</div>`;
@@ -114,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    // Renderiza a interface da Área de Trabalho
+    // --- RENDERIZAÇÃO DA ÁREA DE TRABALHO ---
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
 
@@ -138,8 +167,8 @@ document.addEventListener('DOMContentLoaded', () => {
             blockDiv.appendChild(tag);
 
             personBlock.themes.forEach(theme => {
-                const storageKey = `degravacao_time_${theme.id}`;
-                const savedTime = localStorage.getItem(storageKey) || '';
+                const storageKey = `deg_v2_${theme.id}`;
+                const savedTime = storage.get(storageKey);
 
                 const panel = document.createElement('div');
                 panel.classList.add('theme-panel');
@@ -162,21 +191,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Controle do Accordion
+                // Expansão do Accordion
                 const titleEl = panel.querySelector('.theme-title');
                 titleEl.addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Salvamento automático da minutagem
+                // Salvamento no LocalStorage 
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
                     if (val) {
-                        localStorage.setItem(storageKey, val);
+                        storage.set(storageKey, val);
                         e.target.classList.add('filled');
                     } else {
-                        localStorage.removeItem(storageKey);
+                        storage.remove(storageKey);
                         e.target.classList.remove('filled');
                     }
                 });
@@ -188,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Gera o Resumo Final baseado apenas nos temas com minutagem preenchida
+    // --- GERAÇÃO DO RESUMO ---
     function generateFinalExport() {
         let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
         let hasMarkedThemes = false;
@@ -198,8 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let hasThemesForPerson = false;
 
             personBlock.themes.forEach(theme => {
-                const storageKey = `degravacao_time_${theme.id}`;
-                const savedTime = localStorage.getItem(storageKey);
+                const storageKey = `deg_v2_${theme.id}`;
+                const savedTime = storage.get(storageKey);
                 
                 if (savedTime) {
                     hasMarkedThemes = true;
@@ -232,16 +261,21 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('export');
     }
 
-    // Listeners
+    // --- EVENT LISTENERS ---
     btnProcessar.addEventListener('click', () => {
-        const text = rawTextInput.value;
-        if (!text.trim()) {
-            alert("Por favor, cole a degravação.");
-            return;
+        try {
+            const text = rawTextInput.value;
+            if (!text.trim()) {
+                alert("Por favor, cole a degravação.");
+                return;
+            }
+            parsedData = parseRawText(text);
+            renderWorkspace();
+            switchView('workspace');
+        } catch (error) {
+            console.error(error);
+            alert("Ocorreu um erro ao processar o texto: " + error.message);
         }
-        parsedData = parseRawText(text);
-        renderWorkspace();
-        switchView('workspace');
     });
 
     btnGerarResumo.addEventListener('click', generateFinalExport);
@@ -269,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalHtml = btnCopiar.innerHTML;
             btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
             btnCopiar.classList.remove('btn-success');
-            btnCopiar.style.backgroundColor = "#219653"; // Feedback visual
+            btnCopiar.style.backgroundColor = "#219653"; 
             
             setTimeout(() => {
                 btnCopiar.innerHTML = originalHtml;
