@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Referências do DOM
     const views = {
         input: document.getElementById('view-input'),
         workspace: document.getElementById('view-workspace'),
@@ -18,85 +17,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let parsedData = [];
 
-    // --- FUNÇÕES UTILITÁRIAS ---
-
-    // Gerenciador de LocalStorage à prova de falhas (evita crash em file:///)
+    // --- UTILITÁRIOS ---
     const storage = {
-        get: (key) => {
-            try { return localStorage.getItem(key) || ''; } 
-            catch (e) { return ''; }
-        },
-        set: (key, val) => {
-            try { localStorage.setItem(key, val); } 
-            catch (e) { console.warn('Salvamento local bloqueado pelo navegador.'); }
-        },
-        remove: (key) => {
-            try { localStorage.removeItem(key); } 
-            catch (e) { }
-        }
+        get: (key) => { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } },
+        set: (key, val) => { try { localStorage.setItem(key, val); } catch (e) { console.warn('Storage bloqueado.'); } },
+        remove: (key) => { try { localStorage.removeItem(key); } catch (e) { } }
     };
 
-    // Gera IDs seguros sem usar btoa() que pode falhar com acentuação
     function generateSafeId(str) {
-        return str.normalize("NFD")
-                  .replace(/[\u0300-\u036f]/g, "") // Remove acentos
-                  .replace(/[^a-zA-Z0-9]/g, '_')   // Mantém só alfanuméricos
-                  .toLowerCase();
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     }
 
-    // --- NAVEGAÇÃO ---
     function switchView(viewName) {
         Object.values(views).forEach(view => view.classList.remove('active'));
         views[viewName].classList.add('active');
-        
-        if (viewName === 'input') {
-            headerActions.classList.add('hidden');
-        } else {
-            headerActions.classList.remove('hidden');
-        }
+        headerActions.classList.toggle('hidden', viewName === 'input');
     }
 
-    // --- PARSER ---
+    // --- O PARSER CIRÚRGICO (Baseado em Delimitadores) ---
     function parseRawText(text) {
         const lines = text.split('\n');
         const result = [];
         let currentPerson = null;
         let currentTheme = null;
+        let isExtracting = true;
 
         for (let i = 0; i < lines.length; i++) {
             let line = lines[i].trim();
             if (!line) continue;
 
-            // Trava de segurança: Encerra ao atingir etapas posteriores
-            if (line.toUpperCase().includes('ETAPA 2') || line.toUpperCase().includes('RELATÓRIO ANALÍTICO')) {
-                break;
+            // 1. Tag de parada absoluta
+            if (line.includes('[FIM_DA_DEGRAVACAO]') || line.includes('ETAPA 2')) {
+                isExtracting = false;
+                break; 
             }
 
-            // Novo Participante (📋)
-            if (line.includes('📋')) {
-                let name = line.replace(/📋/g, '')
+            if (!isExtracting) continue;
+
+            // 2. Extração de Participante (Delimitadores: >| e |<)
+            if (line.includes('>|') && line.includes('|<')) {
+                const startIndex = line.indexOf('>|') + 2;
+                const endIndex = line.indexOf('|<');
+                
+                // Extrai exatamente o recheio e limpa ruídos
+                let name = line.substring(startIndex, endIndex)
+                               .replace(/📋/g, '')
                                .replace(/Depoimento de/gi, '')
-                               .replace(/[\*#>]/g, '')
-                               .replace(/^[:-]/, '')
                                .trim();
+                               
+                name = name.replace(/^[:-]/, '').trim();
 
                 currentPerson = { participant: name, themes: [] };
                 result.push(currentPerson);
-                currentTheme = null; 
+                currentTheme = null; // Reseta o tema para a nova pessoa
                 continue;
             }
 
-            // Novo Tema (📌)
-            if (line.includes('📌')) {
+            // 3. Extração de Tema (Delimitadores: ># e #<)
+            if (line.includes('>#') && line.includes('#<')) {
                 if (!currentPerson) continue; 
 
-                let title = line.replace(/📌/g, '')
+                const startIndex = line.indexOf('>#') + 2;
+                const endIndex = line.indexOf('#<');
+                
+                let title = line.substring(startIndex, endIndex)
+                                .replace(/📌/g, '')
                                 .replace(/Tema:/gi, '')
-                                .replace(/[\*#>]/g, '')
                                 .trim();
                 
                 const uniqueId = generateSafeId(currentPerson.participant + title).substring(0, 30);
-
+                
                 currentTheme = {
                     id: uniqueId,
                     title: title,
@@ -106,34 +96,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 continue;
             }
 
-            // Diálogos da Degravação
+            // 4. Agrupamento de Diálogos
             if (currentTheme) {
-                if (line.match(/^---+$/)) continue; // Ignora divisores horizontais 
+                // Ignora linhas que são só markdown de divisória
+                if (line.match(/^---+$/)) continue; 
                 
-                // Sanitiza tags < e > acidentais (ex: <DEGRAVAÇÃO>) para não quebrar o DOM
+                // Transforma < e > literais em entidades HTML para o navegador não tentar renderizar
                 line = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 
                 currentTheme.rawDialogue.push(line);
             }
         }
 
-        // Processa o HTML de cada fala
+        // Processa o HTML de cada fala para destacar o locutor
         result.forEach(person => {
             person.themes.forEach(theme => {
                 theme.content = formatDialogue(theme.rawDialogue);
             });
         });
 
+        // Retorna apenas se encontrou blocos válidos
         return result.filter(p => p.themes.length > 0);
     }
 
-    // Identifica quem está falando e aplica negrito
     function formatDialogue(linesArray) {
         return linesArray.map(line => {
             const cleanLine = line.replace(/\*\*/g, ''); 
             const firstColon = cleanLine.indexOf(':');
             
-            // Heurística: se houver dois pontos no início da frase, é a indicação de interlocutor
+            // Verifica se os dois pontos estão logo no início para indicar quem fala
             if (firstColon > 0 && firstColon < 80) {
                 const speaker = cleanLine.substring(0, firstColon + 1);
                 const text = cleanLine.substring(firstColon + 1);
@@ -143,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
-    // --- RENDERIZAÇÃO DA ÁREA DE TRABALHO ---
+    // --- RENDERIZAÇÃO NA TELA ---
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
 
@@ -152,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #fcc;">
                     <i class="ri-error-warning-line" style="font-size: 2rem;"></i>
                     <h3>Nenhum dado válido encontrado.</h3>
-                    <p>Certifique-se de que o texto colado contém <strong>📋</strong> para as partes e <strong>📌</strong> para os temas.</p>
+                    <p>Verifique se o texto contém os delimitadores <strong>>| |<</strong> para as partes e <strong>># #<</strong> para os temas.</p>
                 </div>`;
             return;
         }
@@ -167,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
             blockDiv.appendChild(tag);
 
             personBlock.themes.forEach(theme => {
-                const storageKey = `deg_v2_${theme.id}`;
+                const storageKey = `deg_v3_${theme.id}`;
                 const savedTime = storage.get(storageKey);
 
                 const panel = document.createElement('div');
@@ -191,13 +182,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Expansão do Accordion
+                // Expansão do painel
                 const titleEl = panel.querySelector('.theme-title');
                 titleEl.addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Salvamento no LocalStorage 
+                // Salvamento automático da minutagem
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
@@ -217,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- GERAÇÃO DO RESUMO ---
+    // --- GERAÇÃO DO RESUMO FINAL ---
     function generateFinalExport() {
         let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
         let hasMarkedThemes = false;
@@ -227,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let hasThemesForPerson = false;
 
             personBlock.themes.forEach(theme => {
-                const storageKey = `deg_v2_${theme.id}`;
+                const storageKey = `deg_v3_${theme.id}`;
                 const savedTime = storage.get(storageKey);
                 
                 if (savedTime) {
@@ -261,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('export');
     }
 
-    // --- EVENT LISTENERS ---
+    // --- CONTROLES DA INTERFACE ---
     btnProcessar.addEventListener('click', () => {
         try {
             const text = rawTextInput.value;
@@ -274,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             switchView('workspace');
         } catch (error) {
             console.error(error);
-            alert("Ocorreu um erro ao processar o texto: " + error.message);
+            alert("Erro inesperado no parser. Consulte o console para mais detalhes.");
         }
     });
 
