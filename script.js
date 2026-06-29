@@ -27,18 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function switchView(viewName) {
-        // Remove a classe 'active' e 'hidden' de todas as telas por segurança
         Object.values(views).forEach(view => {
             view.classList.remove('active');
             view.classList.remove('hidden');
         });
         
-        // Ativa a tela desejada
         if (views[viewName]) {
             views[viewName].classList.add('active');
         }
         
-        // Controle de visibilidade do botão de Voltar Início
         const headerActions = document.getElementById('header-actions');
         if (headerActions) {
             headerActions.classList.toggle('hidden', viewName === 'input');
@@ -65,9 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const text = document.getElementById('raw-text-input').value;
             if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
 
-            console.log("=== PROCESSANDO TEXTO ===");
-            console.time("Tempo Total da Etapa 1");
-            
             const lines = text.split('\n');
             rawLinesData = [];
             
@@ -78,13 +72,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            console.log(`-> Linhas renderizadas: ${rawLinesData.length}`);
             renderTaggingList();
         });
     }
 
     function renderTaggingList() {
-        console.time("Construção HTML");
         const html = rawLinesData.map(line => {
             const safeText = escapeHTML(line.text);
             return `
@@ -99,31 +91,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
-        console.timeEnd("Construção HTML");
 
         try {
             taggingContainer.innerHTML = html;
             switchView('tagging');
-            console.timeEnd("Tempo Total da Etapa 1");
         } catch (error) {
             console.error("ERRO AO INJETAR DOM:", error);
         }
     }
 
-    // DELEGAÇÃO DE EVENTOS: O container escuta o clique de todos os botões
+    // =====================================================================
+    // INTELIGÊNCIA DE DELEGAÇÃO DE EVENTOS E IGNORAR EM MASSA
+    // =====================================================================
     if (taggingContainer) {
         taggingContainer.addEventListener('click', (e) => {
             const btn = e.target.closest('.t-btn');
             if (!btn) return;
 
-            const type = btn.getAttribute('data-type');
+            const targetType = btn.getAttribute('data-type');
             const rowElement = btn.closest('.tag-row');
             const id = parseInt(rowElement.getAttribute('data-index'), 10);
 
-            const line = rawLinesData.find(l => l.id === id);
-            if (line) {
-                line.type = type;
-                rowElement.className = `tag-row type-${type}`;
+            // Encontra o índice real no array
+            const currentIndex = rawLinesData.findIndex(l => l.id === id);
+            if (currentIndex === -1) return;
+
+            const line = rawLinesData[currentIndex];
+            const previousType = line.type; // Memoriza o que era antes do clique
+
+            // 1. Atualiza a linha que foi clicada
+            line.type = targetType;
+            rowElement.className = `tag-row type-${targetType}`;
+
+            // 2. LÓGICA HIERÁRQUICA: Se o usuário clicou em Ignorar num bloco já definido
+            if (targetType === 'ignore') {
+                let endIndex = -1;
+
+                // Se era um Tema, ignora tudo até esbarrar no próximo Tema ou Parte
+                if (previousType === 'theme') {
+                    endIndex = rawLinesData.length; // Por padrão, vai até o fim do documento
+                    for (let i = currentIndex + 1; i < rawLinesData.length; i++) {
+                        if (rawLinesData[i].type === 'theme' || rawLinesData[i].type === 'participant') {
+                            endIndex = i;
+                            break; // Achou a fronteira, para a varredura
+                        }
+                    }
+                } 
+                // Se era uma Parte, ignora tudo até esbarrar na próxima Parte
+                else if (previousType === 'participant') {
+                    endIndex = rawLinesData.length;
+                    for (let i = currentIndex + 1; i < rawLinesData.length; i++) {
+                        if (rawLinesData[i].type === 'participant') {
+                            endIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // 3. Aplica o Ignore em Cascata visual e no estado
+                if (endIndex !== -1) {
+                    for (let i = currentIndex + 1; i < endIndex; i++) {
+                        rawLinesData[i].type = 'ignore';
+                        // Atualiza o DOM pontualmente (alta performance)
+                        const siblingRow = taggingContainer.querySelector(`.tag-row[data-index="${rawLinesData[i].id}"]`);
+                        if (siblingRow) {
+                            siblingRow.className = 'tag-row type-ignore';
+                        }
+                    }
+                }
             }
         });
     }
@@ -169,7 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Aplica o negrito no interlocutor da fala
             parsedData.forEach(person => {
                 person.themes.forEach(theme => {
                     theme.content = theme.rawDialogue.map(dialogLine => {
@@ -182,7 +216,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // Remove partes vazias que não possuem temas
             parsedData = parsedData.filter(p => p.themes.length > 0);
 
             renderWorkspace();
@@ -237,12 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Controle do Accordion
                 panel.querySelector('.theme-title').addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Auto-save do Tempo (Minutagem)
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();

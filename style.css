@@ -55,9 +55,27 @@ textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--bo
 
 .tag-row.type-text .t-btn.btn-txt { background-color: #6c757d; color: white; border-color: #6c757d; }
 
-.tag-row.type-ignore { opacity: 0.4; }
-.tag-row.type-ignore .t-btn.btn-i { background-color: #dc3545; color: white; border-color: #dc3545; }
-.tag-row.type-ignore .tag-content { text-decoration: line-through; }
+/* Novo Comportamento Visual de Recolhimento para Linhas Ignoradas */
+.tag-row.type-ignore { 
+    opacity: 0.5; 
+    background-color: #f8f9fa;
+    padding: 4px 0; 
+}
+.tag-row.type-ignore .t-btn {
+    padding: 2px 6px; 
+    font-size: 0.75rem; 
+}
+.tag-row.type-ignore .t-btn.btn-i { 
+    background-color: #dc3545; color: white; border-color: #dc3545; 
+}
+.tag-row.type-ignore .tag-content { 
+    text-decoration: line-through; 
+    color: #adb5bd;
+    white-space: nowrap;       
+    overflow: hidden;          
+    text-overflow: ellipsis;   
+    font-size: 0.9rem;
+}
 
 .tag-content { flex-grow: 1; padding: 4px 0; word-break: break-word; }
 
@@ -84,4 +102,3 @@ textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--bo
 .export-header { margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; }
 .editable-area { background: white; padding: 2rem; border: 2px dashed var(--border-color); border-radius: 8px; min-height: 500px; outline: none; }
 .editable-area:focus { border-color: var(--primary-color); }
-.hidden { display: none !important; }
