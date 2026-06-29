@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Referências de Telas
+    // --- REFERÊNCIAS DE TELAS E CONTAINERS ---
     const views = {
         input: document.getElementById('view-input'),
         tagging: document.getElementById('view-tagging'),
@@ -7,12 +7,11 @@ document.addEventListener('DOMContentLoaded', () => {
         export: document.getElementById('view-export')
     };
 
-    // Referências de Containers
     const taggingContainer = document.getElementById('tagging-list');
     const panelsContainer = document.getElementById('panels-container');
     const finalEditableContent = document.getElementById('final-editable-content');
 
-    // Estado da Aplicação
+    // --- ESTADO DA APLICAÇÃO ---
     let rawLinesData = []; 
     let parsedData = [];   
 
@@ -30,12 +29,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function switchView(viewName) {
         Object.values(views).forEach(view => view.classList.remove('active'));
         views[viewName].classList.add('active');
-        document.getElementById('header-actions').classList.toggle('hidden', viewName === 'input');
+        const headerActions = document.getElementById('header-actions');
+        if (headerActions) {
+            headerActions.classList.toggle('hidden', viewName === 'input');
+        }
     }
 
-    // Escapa de forma segura qualquer caractere que possa quebrar o HTML na renderização
     function escapeHTML(str) {
-        return str.replace(/[&<>'"]/g, tag => ({
+        if (!str) return '';
+        return String(str).replace(/[&<>'"]/g, tag => ({
             '&': '&amp;',
             '<': '&lt;',
             '>': '&gt;',
@@ -44,35 +46,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }[tag] || tag));
     }
 
-    // --- ETAPA 1: PREPARAR TEXTO PARA MARCAÇÃO MANUAL ---
-    document.getElementById('btn-preparar').addEventListener('click', () => {
-        const text = document.getElementById('raw-text-input').value;
-        if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
+    // =====================================================================
+    // ETAPA 1: PREPARAR TEXTO PARA MARCAÇÃO MANUAL (COM RASTREAMENTO)
+    // =====================================================================
+    const btnPreparar = document.getElementById('btn-preparar');
+    if (btnPreparar) {
+        btnPreparar.addEventListener('click', () => {
+            const text = document.getElementById('raw-text-input').value;
+            if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
 
-        const lines = text.split('\n');
-        rawLinesData = [];
-        
-        lines.forEach((line, index) => {
-            const cleanLine = line.trim();
-            if (cleanLine) {
-                rawLinesData.push({
-                    id: index,
-                    text: cleanLine,
-                    type: 'text'
-                });
-            }
+            console.log("=== INICIANDO RASTREAMENTO DE PERFORMANCE ===");
+            console.time("Tempo Total da Etapa 1");
+            
+            console.time("1. Divisão do texto em linhas");
+            const lines = text.split('\n');
+            console.timeEnd("1. Divisão do texto em linhas");
+            console.log(`-> Total de linhas identificadas: ${lines.length}`);
+
+            console.time("2. Criação do Array de Objetos");
+            rawLinesData = [];
+            lines.forEach((line, index) => {
+                const cleanLine = line.trim();
+                if (cleanLine) {
+                    rawLinesData.push({ id: index, text: cleanLine, type: 'text' });
+                }
+            });
+            console.timeEnd("2. Criação do Array de Objetos");
+            console.log(`-> Total de linhas não-vazias para renderizar: ${rawLinesData.length}`);
+
+            renderTaggingList();
         });
+    }
 
-        renderTaggingList();
-        switchView('tagging');
-    });
-
-    // Renderização utilizando Template Literals (sem eventos inline)
     function renderTaggingList() {
-        // Reduzindo concatenações de string custosas com um Array.map
+        console.time("3. Construção da String HTML");
         const html = rawLinesData.map(line => {
             const safeText = escapeHTML(line.text);
-            
             return `
                 <div class="tag-row type-${line.type}" data-index="${line.id}">
                     <div class="tag-controls">
@@ -85,84 +94,105 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
-        
-        taggingContainer.innerHTML = html;
+        console.timeEnd("3. Construção da String HTML");
+        console.log(`-> Tamanho aproximado da string HTML: ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+
+        console.time("4. Injeção no DOM (innerHTML)");
+        try {
+            taggingContainer.innerHTML = html;
+            console.timeEnd("4. Injeção no DOM (innerHTML)");
+            
+            console.time("5. Troca de Tela");
+            switchView('tagging');
+            console.timeEnd("5. Troca de Tela");
+            
+            console.timeEnd("Tempo Total da Etapa 1");
+            console.log("=== SUCESSO! RENDERIZAÇÃO CONCLUÍDA ===");
+        } catch (error) {
+            console.error("CRASH CAPTURADO NO TRY/CATCH:", error);
+        }
     }
 
-    // EVENT DELEGATION: Um único listener observa os milhares de botões
-    taggingContainer.addEventListener('click', (e) => {
-        // Verifica se o elemento clicado (ou seu pai) é um botão de controle
-        const btn = e.target.closest('.t-btn');
-        if (!btn) return;
+    // EVENT DELEGATION: Apenas um listener para todos os milhares de botões
+    if (taggingContainer) {
+        taggingContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.t-btn');
+            if (!btn) return;
 
-        const type = btn.getAttribute('data-type');
-        const rowElement = btn.closest('.tag-row');
-        const id = parseInt(rowElement.getAttribute('data-index'), 10);
+            const type = btn.getAttribute('data-type');
+            const rowElement = btn.closest('.tag-row');
+            const id = parseInt(rowElement.getAttribute('data-index'), 10);
 
-        // Atualiza a estrutura de dados
-        const line = rawLinesData.find(l => l.id === id);
-        if (line) {
-            line.type = type;
-            // Atualiza o DOM pontualmente (muito mais performático do que re-renderizar tudo)
-            rowElement.className = `tag-row type-${type}`;
-        }
-    });
-
-    // --- ETAPA 2: MONTAR PAINÉIS BASEADO NA MARCAÇÃO ---
-    document.getElementById('btn-montar-paineis').addEventListener('click', () => {
-        parsedData = [];
-        let currentPerson = null;
-        let currentTheme = null;
-
-        rawLinesData.forEach(line => {
-            if (line.type === 'ignore') return;
-
-            let cleanString = line.text.replace(/📋|📌|\[DEPOIMENTO\]|\[TEMA\]|>\||\|<|>#|#</gi, '')
-                                       .replace(/Depoimento de/gi, '')
-                                       .replace(/Tema:/gi, '')
-                                       .replace(/\*\*/g, '').trim();
-
-            if (line.type === 'participant') {
-                cleanString = cleanString.replace(/^[:-]/, '').trim();
-                currentPerson = { participant: cleanString, themes: [] };
-                parsedData.push(currentPerson);
-                currentTheme = null;
-            } 
-            else if (line.type === 'theme') {
-                if (!currentPerson) {
-                    currentPerson = { participant: "Parte Não Identificada", themes: [] };
-                    parsedData.push(currentPerson);
-                }
-                const uniqueId = generateSafeId(currentPerson.participant + cleanString).substring(0, 30);
-                currentTheme = { id: uniqueId, title: cleanString, rawDialogue: [] };
-                currentPerson.themes.push(currentTheme);
-            } 
-            else if (line.type === 'text') {
-                if (currentTheme) {
-                    // Sanitiza o texto de diálogo também na montagem
-                    let safeDialog = escapeHTML(line.text).replace(/\*\*/g, '');
-                    currentTheme.rawDialogue.push(safeDialog);
-                }
+            const line = rawLinesData.find(l => l.id === id);
+            if (line) {
+                line.type = type;
+                rowElement.className = `tag-row type-${type}`;
             }
         });
+    }
 
-        parsedData.forEach(person => {
-            person.themes.forEach(theme => {
-                theme.content = theme.rawDialogue.map(dialogLine => {
-                    const firstColon = dialogLine.indexOf(':');
-                    if (firstColon > 0 && firstColon < 80) {
-                        return `<div class="dialogue-line"><strong>${dialogLine.substring(0, firstColon + 1)}</strong>${dialogLine.substring(firstColon + 1)}</div>`;
+    // =====================================================================
+    // ETAPA 2: MONTAR PAINÉIS E ACCORDIONS
+    // =====================================================================
+    const btnMontarPaineis = document.getElementById('btn-montar-paineis');
+    if (btnMontarPaineis) {
+        btnMontarPaineis.addEventListener('click', () => {
+            parsedData = [];
+            let currentPerson = null;
+            let currentTheme = null;
+
+            rawLinesData.forEach(line => {
+                if (line.type === 'ignore') return;
+
+                let cleanString = line.text.replace(/📋|📌|\[DEPOIMENTO\]|\[TEMA\]|>\||\|<|>#|#</gi, '')
+                                           .replace(/Depoimento de/gi, '')
+                                           .replace(/Tema:/gi, '')
+                                           .replace(/\*\*/g, '').trim();
+
+                if (line.type === 'participant') {
+                    cleanString = cleanString.replace(/^[:-]/, '').trim();
+                    currentPerson = { participant: cleanString, themes: [] };
+                    parsedData.push(currentPerson);
+                    currentTheme = null;
+                } 
+                else if (line.type === 'theme') {
+                    if (!currentPerson) {
+                        currentPerson = { participant: "Parte Não Identificada", themes: [] };
+                        parsedData.push(currentPerson);
                     }
-                    return `<div class="dialogue-line">${dialogLine}</div>`;
-                }).join('');
+                    const uniqueId = generateSafeId(currentPerson.participant + cleanString).substring(0, 30);
+                    currentTheme = { id: uniqueId, title: cleanString, rawDialogue: [] };
+                    currentPerson.themes.push(currentTheme);
+                } 
+                else if (line.type === 'text') {
+                    if (currentTheme) {
+                        // Sanitiza o texto de diálogo também na montagem
+                        let safeDialog = escapeHTML(line.text).replace(/\*\*/g, '');
+                        currentTheme.rawDialogue.push(safeDialog);
+                    }
+                }
             });
+
+            // Aplica o negrito na primeira parte do diálogo
+            parsedData.forEach(person => {
+                person.themes.forEach(theme => {
+                    theme.content = theme.rawDialogue.map(dialogLine => {
+                        const firstColon = dialogLine.indexOf(':');
+                        if (firstColon > 0 && firstColon < 80) {
+                            return `<div class="dialogue-line"><strong>${dialogLine.substring(0, firstColon + 1)}</strong>${dialogLine.substring(firstColon + 1)}</div>`;
+                        }
+                        return `<div class="dialogue-line">${dialogLine}</div>`;
+                    }).join('');
+                });
+            });
+
+            // Limpa participantes sem temas
+            parsedData = parsedData.filter(p => p.themes.length > 0);
+
+            renderWorkspace();
+            switchView('workspace');
         });
-
-        parsedData = parsedData.filter(p => p.themes.length > 0);
-
-        renderWorkspace();
-        switchView('workspace');
-    });
+    }
 
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
@@ -211,12 +241,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Accordion funcionalidade
+                // Accordion (Abrir/Fechar painel)
                 panel.querySelector('.theme-title').addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Auto-save do input
+                // Auto-save do Input de Tempo
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
@@ -236,78 +266,97 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- ETAPA 3: GERAÇÃO DO RESUMO FINAL ---
-    document.getElementById('btn-gerar-resumo').addEventListener('click', () => {
-        let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
-        let hasMarkedThemes = false;
+    // =====================================================================
+    // ETAPA 3: GERAÇÃO DO RESUMO FINAL
+    // =====================================================================
+    const btnGerarResumo = document.getElementById('btn-gerar-resumo');
+    if (btnGerarResumo) {
+        btnGerarResumo.addEventListener('click', () => {
+            let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
+            let hasMarkedThemes = false;
 
-        parsedData.forEach(personBlock => {
-            let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${escapeHTML(personBlock.participant)}</span></h2>`;
-            let hasThemesForPerson = false;
+            parsedData.forEach(personBlock => {
+                let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${escapeHTML(personBlock.participant)}</span></h2>`;
+                let hasThemesForPerson = false;
 
-            personBlock.themes.forEach(theme => {
-                const savedTime = storage.get(`deg_manual_${theme.id}`);
-                
-                if (savedTime) {
-                    hasMarkedThemes = true;
-                    hasThemesForPerson = true;
-                    personHtml += `
-                        <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${escapeHTML(savedTime)}] - 📌 ${escapeHTML(theme.title)}</h3>
-                        <div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">
-                            ${theme.content}
-                        </div>
-                    `;
+                personBlock.themes.forEach(theme => {
+                    const savedTime = storage.get(`deg_manual_${theme.id}`);
+                    
+                    if (savedTime) {
+                        hasMarkedThemes = true;
+                        hasThemesForPerson = true;
+                        personHtml += `
+                            <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${escapeHTML(savedTime)}] - 📌 ${escapeHTML(theme.title)}</h3>
+                            <div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">
+                                ${theme.content}
+                            </div>
+                        `;
+                    }
+                });
+
+                if (hasThemesForPerson) {
+                    finalHtml += personHtml + `<hr style="margin:20px 0;">`;
                 }
             });
 
-            if (hasThemesForPerson) {
-                finalHtml += personHtml + `<hr style="margin:20px 0;">`;
+            if (!hasMarkedThemes) {
+                finalHtml = `
+                <div style="text-align:center; padding: 50px; color: #666;">
+                    <i class="ri-time-line" style="font-size: 3rem;"></i>
+                    <h3>Nenhum tema minutado.</h3>
+                    <p>Volte para a área de painéis e adicione os horários para gerar o resumo.</p>
+                </div>`;
+            }
+
+            finalEditableContent.innerHTML = finalHtml;
+            switchView('export');
+        });
+    }
+
+    // =====================================================================
+    // NAVEGAÇÃO E AÇÕES EXTRAS
+    // =====================================================================
+    const btnVoltarInicio = document.getElementById('btn-voltar-inicio');
+    if (btnVoltarInicio) {
+        btnVoltarInicio.addEventListener('click', () => {
+            if(confirm("Deseja importar um novo texto e perder a marcação atual?")) {
+                document.getElementById('raw-text-input').value = '';
+                switchView('input');
             }
         });
+    }
 
-        if (!hasMarkedThemes) {
-            finalHtml = `
-            <div style="text-align:center; padding: 50px; color: #666;">
-                <i class="ri-time-line" style="font-size: 3rem;"></i>
-                <h3>Nenhum tema minutado.</h3>
-                <p>Volte para a área de painéis e adicione os horários.</p>
-            </div>`;
-        }
+    const btnVoltarTagging = document.getElementById('btn-voltar-tagging');
+    if (btnVoltarTagging) {
+        btnVoltarTagging.addEventListener('click', () => switchView('tagging'));
+    }
 
-        finalEditableContent.innerHTML = finalHtml;
-        switchView('export');
-    });
+    const btnVoltarWorkspace = document.getElementById('btn-voltar-workspace');
+    if (btnVoltarWorkspace) {
+        btnVoltarWorkspace.addEventListener('click', () => switchView('workspace'));
+    }
 
-    // --- NAVEGAÇÃO SECUNDÁRIA ---
-    document.getElementById('btn-voltar-inicio').addEventListener('click', () => {
-        if(confirm("Deseja importar um novo texto e perder a marcação atual?")) {
-            document.getElementById('raw-text-input').value = '';
-            switchView('input');
-        }
-    });
-
-    document.getElementById('btn-voltar-tagging').addEventListener('click', () => switchView('tagging'));
-    document.getElementById('btn-voltar-workspace').addEventListener('click', () => switchView('workspace'));
-
-    document.getElementById('btn-copiar').addEventListener('click', () => {
-        const range = document.createRange();
-        range.selectNodeContents(finalEditableContent);
-        window.getSelection().removeAllRanges();
-        window.getSelection().addRange(range);
-        
-        try {
-            document.execCommand('copy');
-            const btn = document.getElementById('btn-copiar');
-            const origHTML = btn.innerHTML;
-            btn.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
-            btn.style.backgroundColor = "#219653"; 
-            setTimeout(() => { 
-                btn.innerHTML = origHTML; 
-                btn.style.backgroundColor = ""; 
-                window.getSelection().removeAllRanges(); 
-            }, 2500);
-        } catch (err) {
-            alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
-        }
-    });
+    const btnCopiar = document.getElementById('btn-copiar');
+    if (btnCopiar) {
+        btnCopiar.addEventListener('click', () => {
+            const range = document.createRange();
+            range.selectNodeContents(finalEditableContent);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            
+            try {
+                document.execCommand('copy');
+                const origHTML = btnCopiar.innerHTML;
+                btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
+                btnCopiar.style.backgroundColor = "#219653"; 
+                setTimeout(() => { 
+                    btnCopiar.innerHTML = origHTML; 
+                    btnCopiar.style.backgroundColor = ""; 
+                    window.getSelection().removeAllRanges(); 
+                }, 2500);
+            } catch (err) {
+                alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
+            }
+        });
+    }
 });
