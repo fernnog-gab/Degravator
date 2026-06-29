@@ -79,15 +79,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderTaggingList() {
         const html = rawLinesData.map(line => {
             const safeText = escapeHTML(line.text);
+            
+            // Lógica Heurística (Inteligência para o fluxo com NotebookLM)
+            let highlightClass = '';
+            if (safeText.includes('👤') || safeText.includes('Depoimento de')) highlightClass = 'highlight-participant';
+            if (safeText.includes('📌') || safeText.includes('Tema:')) highlightClass = 'highlight-theme';
+
             return `
-                <div class="tag-row type-${line.type}" data-index="${line.id}">
+                <div class="tag-row type-${line.type} ${highlightClass}" data-index="${line.id}">
                     <div class="tag-controls">
-                        <button class="t-btn btn-p" data-type="participant" title="Definir como Parte">👤 Parte</button>
-                        <button class="t-btn btn-t" data-type="theme" title="Definir como Tema">📌 Tema</button>
-                        <button class="t-btn btn-txt" data-type="text" title="Definir como Texto">💬 Texto</button>
-                        <button class="t-btn btn-i" data-type="ignore" title="Ignorar esta linha">🗑️ Ignorar</button>
+                        <button class="t-btn btn-p" data-type="participant" title="Definir como Parte"><i class="ri-user-3-line"></i> Parte</button>
+                        <button class="t-btn btn-t" data-type="theme" title="Definir como Tema"><i class="ri-pushpin-line"></i> Tema</button>
+                        <button class="t-btn btn-txt" data-type="text" title="Definir como Texto"><i class="ri-message-3-line"></i> Texto</button>
+                        <button class="t-btn btn-i" data-type="ignore" title="Ignorar este trecho"><i class="ri-eye-off-line"></i> Ignorar</button>
                     </div>
-                    <div class="tag-content">${safeText}</div>
+                    <div class="tag-content" data-original-text="${safeText}">${safeText}</div>
                 </div>
             `;
         }).join('');
@@ -112,50 +118,57 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowElement = btn.closest('.tag-row');
             const id = parseInt(rowElement.getAttribute('data-index'), 10);
 
-            // Encontra o índice real no array
             const currentIndex = rawLinesData.findIndex(l => l.id === id);
             if (currentIndex === -1) return;
 
             const line = rawLinesData[currentIndex];
-            const previousType = line.type; // Memoriza o que era antes do clique
+            const previousType = line.type;
 
-            // 1. Atualiza a linha que foi clicada
+            // Limpeza de estado UI caso a linha fosse um sumário e está sendo reclassificada
+            if (rowElement.classList.contains('is-summary')) {
+                rowElement.classList.remove('is-summary');
+                const contentEl = rowElement.querySelector('.tag-content');
+                contentEl.innerHTML = contentEl.dataset.originalText; // Restaura estado com segurança
+            }
+
             line.type = targetType;
-            rowElement.className = `tag-row type-${targetType}`;
+            // Limpa classes anteriores e aplica a nova base
+            rowElement.className = `tag-row type-${targetType}`; 
 
-            // 2. LÓGICA HIERÁRQUICA: Se o usuário clicou em Ignorar num bloco já definido
             if (targetType === 'ignore') {
-                let endIndex = -1;
+                let endIndex = rawLinesData.length;
 
-                // Se era um Tema, ignora tudo até esbarrar no próximo Tema ou Parte
                 if (previousType === 'theme') {
-                    endIndex = rawLinesData.length; // Por padrão, vai até o fim do documento
                     for (let i = currentIndex + 1; i < rawLinesData.length; i++) {
                         if (rawLinesData[i].type === 'theme' || rawLinesData[i].type === 'participant') {
-                            endIndex = i;
-                            break; // Achou a fronteira, para a varredura
+                            endIndex = i; break;
                         }
                     }
-                } 
-                // Se era uma Parte, ignora tudo até esbarrar na próxima Parte
-                else if (previousType === 'participant') {
-                    endIndex = rawLinesData.length;
+                } else if (previousType === 'participant') {
                     for (let i = currentIndex + 1; i < rawLinesData.length; i++) {
                         if (rawLinesData[i].type === 'participant') {
-                            endIndex = i;
-                            break;
+                            endIndex = i; break;
                         }
                     }
+                } else {
+                    endIndex = -1; // Se era texto simples, ignora apenas a si mesmo.
                 }
 
-                // 3. Aplica o Ignore em Cascata visual e no estado
-                if (endIndex !== -1) {
+                if (endIndex !== -1 && endIndex > currentIndex + 1) {
+                    const countIgnored = endIndex - currentIndex - 1;
+                    
+                    // Muta visualmente a linha atual para ser o cabeçalho do colapso
+                    rowElement.classList.add('is-summary');
+                    rowElement.querySelector('.tag-content').innerHTML = `
+                        <i class="ri-eye-off-fill"></i> Trecho ocultado em massa (${countIgnored} linhas)
+                    `;
+
+                    // Colapsa os filhos no DOM e altera estado
                     for (let i = currentIndex + 1; i < endIndex; i++) {
                         rawLinesData[i].type = 'ignore';
-                        // Atualiza o DOM pontualmente (alta performance)
                         const siblingRow = taggingContainer.querySelector(`.tag-row[data-index="${rawLinesData[i].id}"]`);
                         if (siblingRow) {
-                            siblingRow.className = 'tag-row type-ignore';
+                            siblingRow.className = 'tag-row type-ignore is-collapsed';
                         }
                     }
                 }
@@ -209,9 +222,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     theme.content = theme.rawDialogue.map(dialogLine => {
                         const firstColon = dialogLine.indexOf(':');
                         if (firstColon > 0 && firstColon < 80) {
-                            return `<div class="dialogue-line"><strong>${dialogLine.substring(0, firstColon + 1)}</strong>${dialogLine.substring(firstColon + 1)}</div>`;
+                            // Protege o <strong> e torna apenas o depoimento editável
+                            return `<div class="dialogue-line">
+                                        <strong>${dialogLine.substring(0, firstColon + 1)}</strong>
+                                        <span class="editable-text" contenteditable="true">${dialogLine.substring(firstColon + 1)}</span>
+                                    </div>`;
                         }
-                        return `<div class="dialogue-line">${dialogLine}</div>`;
+                        return `<div class="dialogue-line"><span class="editable-text" contenteditable="true">${dialogLine}</span></div>`;
                     }).join('');
                 });
             });
@@ -260,9 +277,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                    placeholder="00:00" value="${escapeHTML(savedTime)}" 
                                    title="Insira a minutagem">
                         </div>
-                        <div class="theme-title">
-                            <span>${escapeHTML(theme.title)}</span> 
-                            <i class="ri-arrow-down-s-line"></i>
+                        <div class="theme-title" style="display:flex; align-items:center; flex-grow:1; justify-content:space-between;">
+                            <div>
+                                <span class="editable-text theme-name" contenteditable="true">${escapeHTML(theme.title)}</span>
+                                <i class="ri-pencil-line edit-icon"></i>
+                            </div>
+                            <div class="accordion-toggle" style="cursor:pointer; padding: 5px;">
+                                <i class="ri-arrow-down-s-line" style="font-size:1.5rem;"></i>
+                            </div>
                         </div>
                     </div>
                     <div class="theme-content">
@@ -270,7 +292,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                panel.querySelector('.theme-title').addEventListener('click', () => {
+                // CORREÇÃO CRÍTICA DO EVENT BUBBLING: Restrito apenas ao ícone/div do botão
+                panel.querySelector('.accordion-toggle').addEventListener('click', (e) => {
                     panel.classList.toggle('open');
                 });
 
@@ -302,20 +325,38 @@ document.addEventListener('DOMContentLoaded', () => {
             let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
             let hasMarkedThemes = false;
 
-            parsedData.forEach(personBlock => {
-                let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${escapeHTML(personBlock.participant)}</span></h2>`;
+            const participantBlocks = panelsContainer.querySelectorAll('.participant-block');
+
+            participantBlocks.forEach(blockDiv => {
+                // Se houvesse contenteditable no nome da parte, leríamos daqui. Como padrão, pega o original
+                const participantName = blockDiv.querySelector('.participant-tag span').innerText.trim();
+                
+                let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${escapeHTML(participantName)}</span></h2>`;
                 let hasThemesForPerson = false;
 
-                personBlock.themes.forEach(theme => {
-                    const savedTime = storage.get(`deg_manual_${theme.id}`);
+                const themes = blockDiv.querySelectorAll('.theme-panel');
+                themes.forEach(panel => {
+                    const timeInput = panel.querySelector('.time-input');
+                    const savedTime = timeInput ? timeInput.value.trim() : '';
                     
                     if (savedTime) {
                         hasMarkedThemes = true;
                         hasThemesForPerson = true;
+                        
+                        const themeTitleEl = panel.querySelector('.theme-name');
+                        const themeTitle = themeTitleEl ? themeTitleEl.innerText.trim() : 'Sem Título';
+                        
+                        // Clonagem profunda para limpar propriedades de UI (contenteditable) antes do print
+                        const contentClone = panel.querySelector('.theme-content').cloneNode(true);
+                        contentClone.querySelectorAll('.editable-text').forEach(el => {
+                            el.removeAttribute('contenteditable');
+                            el.classList.remove('editable-text');
+                        });
+
                         personHtml += `
-                            <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${escapeHTML(savedTime)}] - 📌 ${escapeHTML(theme.title)}</h3>
+                            <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${escapeHTML(savedTime)}] - 📌 ${escapeHTML(themeTitle)}</h3>
                             <div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">
-                                ${theme.content}
+                                ${contentClone.innerHTML}
                             </div>
                         `;
                     }

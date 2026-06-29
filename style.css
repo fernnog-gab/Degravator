@@ -102,3 +102,48 @@ textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--bo
 .export-header { margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; }
 .editable-area { background: white; padding: 2rem; border: 2px dashed var(--border-color); border-radius: 8px; min-height: 500px; outline: none; }
 .editable-area:focus { border-color: var(--primary-color); }
+
+/* --- NOVA IMPLEMENTAÇÃO: UX/UI REFINADA --- */
+
+/* 1. Destaques Inteligentes (Neon) */
+.highlight-participant { 
+    box-shadow: inset 4px 0 0px var(--tag-text), inset 0 0 15px rgba(241, 196, 15, 0.15); 
+    background-color: rgba(241, 196, 15, 0.05); 
+}
+.highlight-theme { 
+    box-shadow: inset 4px 0 0px #1976d2, inset 0 0 15px rgba(25, 118, 210, 0.15); 
+    background-color: rgba(25, 118, 210, 0.05); 
+}
+
+/* 2. Ocultação Cascata (Sem perda de dados) */
+.tag-row.is-collapsed { 
+    display: none !important; 
+}
+.tag-row.is-summary {
+    background-color: #f8f9fa;
+    border-left: 4px solid #adb5bd;
+}
+.tag-row.is-summary .tag-content {
+    text-decoration: none; /* Remove o risco herdado de type-ignore */
+    font-style: italic;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* 3. Edição Inline Controlada */
+.editable-text { 
+    transition: background 0.2s; 
+    border-radius: 3px; 
+    padding: 2px 4px; 
+    outline: none;
+    border: 1px dashed transparent;
+}
+.editable-text:hover { 
+    border-color: #ccc; 
+    cursor: text; 
+}
+.editable-text:focus { 
+    background-color: #fff; 
+    border-color: var(--primary-color);
+}
+.edit-icon { font-size: 0.85em; opacity: 0.6; margin-left: 5px; color: var(--primary-color); pointer-events: none;}
