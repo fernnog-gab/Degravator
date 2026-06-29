@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistematizador de Degravações Judiciais</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Ícones -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+</head>
+<body>
+
+    <header class="app-header">
+        <div class="logo">
+            <i class="ri-scales-3-line"></i>
+            <span>Sistematizador de Degravações</span>
+        </div>
+        <div id="header-actions" class="hidden">
+            <button id="btn-gerar-resumo" class="btn btn-primary">
+                <i class="ri-filter-3-line"></i> Gerar Resumo (Apenas Marcados)
+            </button>
+            <button id="btn-voltar-inicio" class="btn btn-outline">
+                <i class="ri-arrow-go-back-line"></i> Nova Degravação
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- TELA 1: INPUT DO TEXTO DO NOTEBOOK LM -->
+        <section id="view-input" class="view-section active">
+            <div class="instructions">
+                <h2>Importar Degravação</h2>
+                <p>Cole abaixo o texto gerado pelo NotebookLM contendo os marcadores <code>> 📋 Depoimento de...</code> e <code>📌 Tema: ...</code></p>
+            </div>
+            <textarea id="raw-text-input" placeholder="Cole o texto da degravação aqui..."></textarea>
+            <button id="btn-processar" class="btn btn-primary btn-large">
+                <i class="ri-magic-line"></i> Organizar e Estilizar Painéis
+            </button>
+        </section>
+
+        <!-- TELA 2: ÁREA DE TRABALHO (PAINÉIS) -->
+        <section id="view-workspace" class="view-section hidden">
+            <div class="workspace-header">
+                <h2>Análise e Minutagem</h2>
+                <p>Expanda os temas, adicione o tempo (Ex: 12:05) nos campos à esquerda. Seus dados são salvos automaticamente.</p>
+            </div>
+            <div id="panels-container">
+                <!-- O JS injetará os painéis aqui -->
+            </div>
+        </section>
+
+        <!-- TELA 3: EDIÇÃO FINAL E EXPORTAÇÃO -->
+        <section id="view-export" class="view-section hidden">
+            <div class="export-header">
+                <h2>Resumo Final Editável</h2>
+                <p>Revise, corrija erros da IA no texto abaixo e clique em copiar.</p>
+                <div class="export-actions">
+                    <button id="btn-voltar-workspace" class="btn btn-outline">
+                        <i class="ri-arrow-left-line"></i> Voltar aos Painéis
+                    </button>
+                    <button id="btn-copiar" class="btn btn-success">
+                        <i class="ri-clipboard-line"></i> Copiar para Área de Transferência
+                    </button>
+                </div>
+            </div>
+            <div id="final-editable-content" contenteditable="true" class="editable-area">
+                <!-- O JS injetará o resumo aqui -->
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
