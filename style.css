@@ -1,0 +1,229 @@
+/* Variáveis de Tema */
+:root {
+    --bg-color: #f4f7f6;
+    --text-color: #333333;
+    --primary-color: #2c3e50;
+    --accent-color: #e67e22;
+    --tag-bg: #111111;
+    --tag-text: #f1c40f;
+    --panel-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --success-color: #27ae60;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+/* Header */
+.app-header {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.app-header .logo {
+    font-size: 1.2rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Container & Views */
+.container {
+    max-width: 1000px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.view-section {
+    display: none;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.view-section.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Inputs e Botões */
+textarea {
+    width: 100%;
+    height: 400px;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    resize: vertical;
+    margin-bottom: 1rem;
+}
+
+.btn {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.btn-primary { background-color: var(--primary-color); color: white; }
+.btn-primary:hover { background-color: #1a252f; }
+.btn-success { background-color: var(--success-color); color: white; }
+.btn-success:hover { background-color: #219653; }
+.btn-outline { background-color: transparent; border: 1px solid white; color: white; }
+.btn-outline:hover { background-color: rgba(255,255,255,0.1); }
+#view-export .btn-outline { border-color: var(--primary-color); color: var(--primary-color); }
+
+.btn-large {
+    font-size: 1.1rem;
+    padding: 1rem 2rem;
+    width: 100%;
+    justify-content: center;
+}
+
+/* Componentes do Workspace */
+.participant-block {
+    margin-bottom: 2rem;
+}
+
+.participant-tag {
+    background-color: var(--tag-bg);
+    color: white;
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.participant-tag span {
+    color: var(--tag-text);
+}
+
+.theme-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.8rem;
+    overflow: hidden;
+}
+
+.theme-header {
+    display: flex;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid transparent;
+}
+
+/* Formulário de Tempo (Esquerda) */
+.time-input-container {
+    margin-right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.time-input {
+    width: 80px;
+    padding: 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    text-align: center;
+    font-family: monospace;
+    font-size: 1rem;
+}
+
+.time-input.filled {
+    background-color: #e8f5e9;
+    border-color: var(--success-color);
+}
+
+/* Título do Tema */
+.theme-title {
+    flex-grow: 1;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.theme-title i {
+    transition: transform 0.3s;
+}
+
+.theme-panel.open .theme-title i {
+    transform: rotate(180deg);
+}
+
+.theme-panel.open .theme-header {
+    border-bottom-color: var(--border-color);
+}
+
+.theme-content {
+    display: none;
+    padding: 1rem;
+    background-color: white;
+}
+
+.theme-panel.open .theme-content {
+    display: block;
+}
+
+.dialogue-line {
+    margin-bottom: 0.5rem;
+    padding-left: 1rem;
+    border-left: 3px solid #eee;
+}
+
+.dialogue-line strong {
+    color: var(--primary-color);
+}
+
+/* Área de Edição Final */
+.export-header {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.editable-area {
+    background: white;
+    padding: 2rem;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    min-height: 500px;
+    outline: none;
+}
+
+.editable-area:focus {
+    border-color: var(--primary-color);
+}
+
+.hidden { display: none !important; }
