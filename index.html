@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistematizador de Degravações Judiciais</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Ícones -->
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 </head>
 <body>
@@ -26,46 +25,39 @@
     </header>
 
     <main class="container">
-        <!-- TELA 1: INPUT DO TEXTO DO NOTEBOOK LM -->
         <section id="view-input" class="view-section active">
             <div class="instructions">
                 <h2>Importar Degravação</h2>
-                <p>Cole abaixo o texto gerado pelo NotebookLM contendo os marcadores <code>> 📋 Depoimento de...</code> e <code>📌 Tema: ...</code></p>
+                <p>Cole abaixo o texto gerado contendo os marcadores <code>📋 Depoimento de...</code> e <code>📌 Tema: ...</code></p>
             </div>
-            <textarea id="raw-text-input" placeholder="Cole o texto da degravação aqui..."></textarea>
+            <textarea id="raw-text-input" placeholder="Cole o texto bruto da degravação aqui..."></textarea>
             <button id="btn-processar" class="btn btn-primary btn-large">
                 <i class="ri-magic-line"></i> Organizar e Estilizar Painéis
             </button>
         </section>
 
-        <!-- TELA 2: ÁREA DE TRABALHO (PAINÉIS) -->
         <section id="view-workspace" class="view-section hidden">
             <div class="workspace-header">
                 <h2>Análise e Minutagem</h2>
-                <p>Expanda os temas, adicione o tempo (Ex: 12:05) nos campos à esquerda. Seus dados são salvos automaticamente.</p>
+                <p>Expanda os temas e adicione o tempo (Ex: 12:05) nos campos à esquerda. O salvamento é automático.</p>
             </div>
-            <div id="panels-container">
-                <!-- O JS injetará os painéis aqui -->
-            </div>
+            <div id="panels-container"></div>
         </section>
 
-        <!-- TELA 3: EDIÇÃO FINAL E EXPORTAÇÃO -->
         <section id="view-export" class="view-section hidden">
             <div class="export-header">
                 <h2>Resumo Final Editável</h2>
-                <p>Revise, corrija erros da IA no texto abaixo e clique em copiar.</p>
+                <p>Revise o texto, faça os ajustes finais e copie para sua minuta.</p>
                 <div class="export-actions">
                     <button id="btn-voltar-workspace" class="btn btn-outline">
                         <i class="ri-arrow-left-line"></i> Voltar aos Painéis
                     </button>
                     <button id="btn-copiar" class="btn btn-success">
-                        <i class="ri-clipboard-line"></i> Copiar para Área de Transferência
+                        <i class="ri-clipboard-line"></i> Copiar Texto
                     </button>
                 </div>
             </div>
-            <div id="final-editable-content" contenteditable="true" class="editable-area">
-                <!-- O JS injetará o resumo aqui -->
-            </div>
+            <div id="final-editable-content" contenteditable="true" class="editable-area"></div>
         </section>
     </main>
 
