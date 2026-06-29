@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Referências do DOM
     const views = {
         input: document.getElementById('view-input'),
         workspace: document.getElementById('view-workspace'),
@@ -10,7 +9,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const panelsContainer = document.getElementById('panels-container');
     const finalEditableContent = document.getElementById('final-editable-content');
 
-    // Botões
     const btnProcessar = document.getElementById('btn-processar');
     const btnGerarResumo = document.getElementById('btn-gerar-resumo');
     const btnVoltarInicio = document.getElementById('btn-voltar-inicio');
@@ -19,11 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let parsedData = [];
 
-    // --- FUNÇÕES DE NAVEGAÇÃO ---
+    // Gerencia a transição de telas
     function switchView(viewName) {
         Object.values(views).forEach(view => view.classList.remove('active'));
         views[viewName].classList.add('active');
-
+        
         if (viewName === 'input') {
             headerActions.classList.add('hidden');
         } else {
@@ -31,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- NOVO PARSER "RELAXADO" (Linha a Linha) ---
+    // Parser à prova de falhas: ignora formatação Markdown e confia apenas nos emojis e limites definidos
     function parseRawText(text) {
         const lines = text.split('\n');
         const result = [];
@@ -42,86 +40,81 @@ document.addEventListener('DOMContentLoaded', () => {
             let line = lines[i].trim();
             if (!line) continue;
 
-            // TRAVA DE SEGURANÇA: Se chegar na Etapa 2, para de extrair (evita sujeira)
+            // Encerra imediatamente ao encontrar o marcador da Etapa 2
             if (line.includes('ETAPA 2') || line.includes('RELATÓRIO ANALÍTICO')) {
                 break;
             }
 
-            // 1. Encontrou a prancheta? É um novo participante.
+            // Novo Participante
             if (line.includes('📋')) {
-                // Limpa tudo que não interessa, pegando só o nome
                 let name = line.replace(/📋/g, '')
                                .replace(/Depoimento de/gi, '')
-                               .replace(/[\*\*>]/g, '') // remove asteriscos e sinais de maior
+                               .replace(/[\*#>]/g, '') // Remove ruídos comuns de markdown
+                               .replace(/^[:-]/, '')  // Remove traços/dois pontos iniciais
                                .trim();
-                
-                // Remove dois pontos ou hífens no começo, se houver
-                name = name.replace(/^[:-]/, '').trim();
 
                 currentPerson = { participant: name, themes: [] };
                 result.push(currentPerson);
-                currentTheme = null; // Reseta o tema pois mudou a pessoa
+                currentTheme = null; 
                 continue;
             }
 
-            // 2. Encontrou o alfinete? É um novo tema.
+            // Novo Tema
             if (line.includes('📌')) {
-                if (!currentPerson) continue; // Ignora se a IA colocou tema antes da pessoa
+                if (!currentPerson) continue; 
 
-                // Limpa sujeiras do título do tema
                 let title = line.replace(/📌/g, '')
                                 .replace(/Tema:/gi, '')
-                                .replace(/[\*\*>]/g, '')
+                                .replace(/[\*#>]/g, '')
                                 .trim();
                 
-                // Cria um ID único para salvar o tempo
-                const uniqueId = btoa(unescape(encodeURIComponent(currentPerson.participant + title))).substring(0, 15);
+                // Gera uma chave segura para o LocalStorage
+                const uniqueId = btoa(unescape(encodeURIComponent(currentPerson.participant + title))).substring(0, 20);
 
                 currentTheme = {
                     id: uniqueId,
                     title: title,
-                    rawDialogue: [] // Vai guardar as falas temporariamente
+                    rawDialogue: [] 
                 };
                 currentPerson.themes.push(currentTheme);
                 continue;
             }
 
-            // 3. Se não é participante nem tema, e tem um tema aberto, é fala (diálogo)!
+            // Falas / Diálogos
             if (currentTheme) {
-                // Ignora linhas que são só tracinhos "---"
-                if (line.match(/^---+$/)) continue;
-                
+                if (line.match(/^---+$/)) continue; // Ignora divisores horizontais isolados
                 currentTheme.rawDialogue.push(line);
             }
         }
 
-        // Processa os diálogos brutos para HTML formatado
         result.forEach(person => {
             person.themes.forEach(theme => {
                 theme.content = formatDialogue(theme.rawDialogue);
             });
         });
 
-        // Retorna apenas participantes que tenham pelo menos 1 tema
         return result.filter(p => p.themes.length > 0);
     }
 
-    // Estiliza os diálogos (deixa o nome do falante em destaque)
+    // Aplica negrito aos interlocutores com base na posição dos "dois pontos", dispensando RegEx de Markdown
     function formatDialogue(linesArray) {
         return linesArray.map(line => {
-            if (line.startsWith('**')) {
-                const nameEndIndex = line.indexOf('**', 2) + 2;
-                if(nameEndIndex > 1) {
-                    const name = line.substring(0, nameEndIndex);
-                    const text = line.substring(nameEndIndex);
-                    return `<div class="dialogue-line"><strong>${name}</strong> ${text}</div>`;
-                }
+            // Remove o markdown nativo caso a LLM tenha gerado parcialmente
+            const cleanLine = line.replace(/\*\*/g, ''); 
+            
+            const firstColon = cleanLine.indexOf(':');
+            
+            // Se houver dois pontos na primeira parte da string (limite razoável de 60 caracteres)
+            if (firstColon > 0 && firstColon < 60) {
+                const speaker = cleanLine.substring(0, firstColon + 1);
+                const text = cleanLine.substring(firstColon + 1);
+                return `<div class="dialogue-line"><strong>${speaker}</strong>${text}</div>`;
             }
-            return `<div class="dialogue-line">${line}</div>`;
+            return `<div class="dialogue-line">${cleanLine}</div>`;
         }).join('');
     }
 
-    // --- RENDERIZADOR ---
+    // Renderiza a interface da Área de Trabalho
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
 
@@ -129,8 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
             panelsContainer.innerHTML = `
                 <div style="background: #fee; color: #c00; padding: 20px; border-radius: 8px; text-align: center; border: 1px solid #fcc;">
                     <i class="ri-error-warning-line" style="font-size: 2rem;"></i>
-                    <h3>Nenhum dado encontrado!</h3>
-                    <p>Certifique-se de que o texto colado contém os emojis <strong>📋</strong> para as partes e <strong>📌</strong> para os temas.</p>
+                    <h3>Nenhum dado válido encontrado.</h3>
+                    <p>Certifique-se de que o texto colado contém <strong>📋</strong> para as partes e <strong>📌</strong> para os temas.</p>
                 </div>`;
             return;
         }
@@ -145,7 +138,8 @@ document.addEventListener('DOMContentLoaded', () => {
             blockDiv.appendChild(tag);
 
             personBlock.themes.forEach(theme => {
-                const savedTime = localStorage.getItem(`deg_time_${theme.id}`) || '';
+                const storageKey = `degravacao_time_${theme.id}`;
+                const savedTime = localStorage.getItem(storageKey) || '';
 
                 const panel = document.createElement('div');
                 panel.classList.add('theme-panel');
@@ -156,10 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             <i class="ri-time-line"></i>
                             <input type="text" class="time-input ${savedTime ? 'filled' : ''}" 
                                    placeholder="00:00" value="${savedTime}" 
-                                   data-id="${theme.id}" title="Minutagem">
+                                   title="Insira a minutagem">
                         </div>
                         <div class="theme-title">
-                            ${theme.title} <i class="ri-arrow-down-s-line"></i>
+                            <span>${theme.title}</span> 
+                            <i class="ri-arrow-down-s-line"></i>
                         </div>
                     </div>
                     <div class="theme-content">
@@ -167,19 +162,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
+                // Controle do Accordion
                 const titleEl = panel.querySelector('.theme-title');
                 titleEl.addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
+                // Salvamento automático da minutagem
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
                     if (val) {
-                        localStorage.setItem(`deg_time_${theme.id}`, val);
+                        localStorage.setItem(storageKey, val);
                         e.target.classList.add('filled');
                     } else {
-                        localStorage.removeItem(`deg_time_${theme.id}`);
+                        localStorage.removeItem(storageKey);
                         e.target.classList.remove('filled');
                     }
                 });
@@ -191,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- GERAÇÃO DO RESUMO FINAL ---
+    // Gera o Resumo Final baseado apenas nos temas com minutagem preenchida
     function generateFinalExport() {
         let finalHtml = `<h1>Resumo de Degravação Minutada</h1><br>`;
         let hasMarkedThemes = false;
@@ -201,7 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let hasThemesForPerson = false;
 
             personBlock.themes.forEach(theme => {
-                const savedTime = localStorage.getItem(`deg_time_${theme.id}`);
+                const storageKey = `degravacao_time_${theme.id}`;
+                const savedTime = localStorage.getItem(storageKey);
                 
                 if (savedTime) {
                     hasMarkedThemes = true;
@@ -234,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('export');
     }
 
-    // --- EVENT LISTENERS GERAIS ---
+    // Listeners
     btnProcessar.addEventListener('click', () => {
         const text = rawTextInput.value;
         if (!text.trim()) {
@@ -268,12 +266,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             document.execCommand('copy');
+            const originalHtml = btnCopiar.innerHTML;
             btnCopiar.innerHTML = `<i class="ri-check-line"></i> Copiado!`;
-            btnCopiar.style.backgroundColor = "#219653";
+            btnCopiar.classList.remove('btn-success');
+            btnCopiar.style.backgroundColor = "#219653"; // Feedback visual
+            
             setTimeout(() => {
-                btnCopiar.innerHTML = `<i class="ri-clipboard-line"></i> Copiar para Área de Transferência`;
+                btnCopiar.innerHTML = originalHtml;
                 btnCopiar.style.backgroundColor = "";
-            }, 3000);
+                selection.removeAllRanges();
+            }, 2500);
         } catch (err) {
             alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
         }
