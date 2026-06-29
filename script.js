@@ -27,8 +27,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function switchView(viewName) {
-        Object.values(views).forEach(view => view.classList.remove('active'));
-        views[viewName].classList.add('active');
+        // Remove a classe 'active' e 'hidden' de todas as telas por segurança
+        Object.values(views).forEach(view => {
+            view.classList.remove('active');
+            view.classList.remove('hidden');
+        });
+        
+        // Ativa a tela desejada
+        if (views[viewName]) {
+            views[viewName].classList.add('active');
+        }
+        
+        // Controle de visibilidade do botão de Voltar Início
         const headerActions = document.getElementById('header-actions');
         if (headerActions) {
             headerActions.classList.toggle('hidden', viewName === 'input');
@@ -47,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =====================================================================
-    // ETAPA 1: PREPARAR TEXTO PARA MARCAÇÃO MANUAL (COM RASTREAMENTO)
+    // ETAPA 1: PREPARAR TEXTO PARA MARCAÇÃO MANUAL
     // =====================================================================
     const btnPreparar = document.getElementById('btn-preparar');
     if (btnPreparar) {
@@ -55,31 +65,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const text = document.getElementById('raw-text-input').value;
             if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
 
-            console.log("=== INICIANDO RASTREAMENTO DE PERFORMANCE ===");
+            console.log("=== PROCESSANDO TEXTO ===");
             console.time("Tempo Total da Etapa 1");
             
-            console.time("1. Divisão do texto em linhas");
             const lines = text.split('\n');
-            console.timeEnd("1. Divisão do texto em linhas");
-            console.log(`-> Total de linhas identificadas: ${lines.length}`);
-
-            console.time("2. Criação do Array de Objetos");
             rawLinesData = [];
+            
             lines.forEach((line, index) => {
                 const cleanLine = line.trim();
                 if (cleanLine) {
                     rawLinesData.push({ id: index, text: cleanLine, type: 'text' });
                 }
             });
-            console.timeEnd("2. Criação do Array de Objetos");
-            console.log(`-> Total de linhas não-vazias para renderizar: ${rawLinesData.length}`);
 
+            console.log(`-> Linhas renderizadas: ${rawLinesData.length}`);
             renderTaggingList();
         });
     }
 
     function renderTaggingList() {
-        console.time("3. Construção da String HTML");
+        console.time("Construção HTML");
         const html = rawLinesData.map(line => {
             const safeText = escapeHTML(line.text);
             return `
@@ -94,26 +99,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
-        console.timeEnd("3. Construção da String HTML");
-        console.log(`-> Tamanho aproximado da string HTML: ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+        console.timeEnd("Construção HTML");
 
-        console.time("4. Injeção no DOM (innerHTML)");
         try {
             taggingContainer.innerHTML = html;
-            console.timeEnd("4. Injeção no DOM (innerHTML)");
-            
-            console.time("5. Troca de Tela");
             switchView('tagging');
-            console.timeEnd("5. Troca de Tela");
-            
             console.timeEnd("Tempo Total da Etapa 1");
-            console.log("=== SUCESSO! RENDERIZAÇÃO CONCLUÍDA ===");
         } catch (error) {
-            console.error("CRASH CAPTURADO NO TRY/CATCH:", error);
+            console.error("ERRO AO INJETAR DOM:", error);
         }
     }
 
-    // EVENT DELEGATION: Apenas um listener para todos os milhares de botões
+    // DELEGAÇÃO DE EVENTOS: O container escuta o clique de todos os botões
     if (taggingContainer) {
         taggingContainer.addEventListener('click', (e) => {
             const btn = e.target.closest('.t-btn');
@@ -166,14 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 } 
                 else if (line.type === 'text') {
                     if (currentTheme) {
-                        // Sanitiza o texto de diálogo também na montagem
                         let safeDialog = escapeHTML(line.text).replace(/\*\*/g, '');
                         currentTheme.rawDialogue.push(safeDialog);
                     }
                 }
             });
 
-            // Aplica o negrito na primeira parte do diálogo
+            // Aplica o negrito no interlocutor da fala
             parsedData.forEach(person => {
                 person.themes.forEach(theme => {
                     theme.content = theme.rawDialogue.map(dialogLine => {
@@ -186,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            // Limpa participantes sem temas
+            // Remove partes vazias que não possuem temas
             parsedData = parsedData.filter(p => p.themes.length > 0);
 
             renderWorkspace();
@@ -241,12 +237,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Accordion (Abrir/Fechar painel)
+                // Controle do Accordion
                 panel.querySelector('.theme-title').addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Auto-save do Input de Tempo
+                // Auto-save do Tempo (Minutagem)
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
@@ -314,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // =====================================================================
-    // NAVEGAÇÃO E AÇÕES EXTRAS
+    // NAVEGAÇÃO E BOTÕES DE AÇÃO
     // =====================================================================
     const btnVoltarInicio = document.getElementById('btn-voltar-inicio');
     if (btnVoltarInicio) {
