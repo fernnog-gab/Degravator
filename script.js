@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function generateSafeId(str) {
-        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        return (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     }
 
     function switchView(viewName) {
@@ -33,12 +33,22 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('header-actions').classList.toggle('hidden', viewName === 'input');
     }
 
+    // Escapa de forma segura qualquer caractere que possa quebrar o HTML na renderização
+    function escapeHTML(str) {
+        return str.replace(/[&<>'"]/g, tag => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            "'": '&#39;',
+            '"': '&quot;'
+        }[tag] || tag));
+    }
+
     // --- ETAPA 1: PREPARAR TEXTO PARA MARCAÇÃO MANUAL ---
     document.getElementById('btn-preparar').addEventListener('click', () => {
         const text = document.getElementById('raw-text-input').value;
         if (!text.trim()) { alert("Por favor, cole a degravação."); return; }
 
-        // Converte o texto bruto em um Array de objetos
         const lines = text.split('\n');
         rawLinesData = [];
         
@@ -48,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 rawLinesData.push({
                     id: index,
                     text: cleanLine,
-                    type: 'text' // Todas as linhas começam como Texto Normal por padrão
+                    type: 'text'
                 });
             }
         });
@@ -57,40 +67,46 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('tagging');
     });
 
-    // Renderiza a lista para o usuário clicar e marcar
+    // Renderização utilizando Template Literals (sem eventos inline)
     function renderTaggingList() {
-        let html = '';
-        rawLinesData.forEach(line => {
-            // Escapa HTML para segurança
-            const safeText = line.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // Reduzindo concatenações de string custosas com um Array.map
+        const html = rawLinesData.map(line => {
+            const safeText = escapeHTML(line.text);
             
-            html += `
+            return `
                 <div class="tag-row type-${line.type}" data-index="${line.id}">
                     <div class="tag-controls">
-                        <button class="t-btn btn-p" onclick="setLineType(${line.id}, 'participant')" title="Definir como Parte">👤 Parte</button>
-                        <button class="t-btn btn-t" onclick="setLineType(${line.id}, 'theme')" title="Definir como Tema">📌 Tema</button>
-                        <button class="t-btn btn-txt" onclick="setLineType(${line.id}, 'text')" title="Definir como Texto">💬 Texto</button>
-                        <button class="t-btn btn-i" onclick="setLineType(${line.id}, 'ignore')" title="Ignorar esta linha">🗑️ Ignorar</button>
+                        <button class="t-btn btn-p" data-type="participant" title="Definir como Parte">👤 Parte</button>
+                        <button class="t-btn btn-t" data-type="theme" title="Definir como Tema">📌 Tema</button>
+                        <button class="t-btn btn-txt" data-type="text" title="Definir como Texto">💬 Texto</button>
+                        <button class="t-btn btn-i" data-type="ignore" title="Ignorar esta linha">🗑️ Ignorar</button>
                     </div>
                     <div class="tag-content">${safeText}</div>
                 </div>
             `;
-        });
+        }).join('');
+        
         taggingContainer.innerHTML = html;
     }
 
-    // Exposta globalmente para ser chamada pelos botões inline
-    window.setLineType = function(id, type) {
+    // EVENT DELEGATION: Um único listener observa os milhares de botões
+    taggingContainer.addEventListener('click', (e) => {
+        // Verifica se o elemento clicado (ou seu pai) é um botão de controle
+        const btn = e.target.closest('.t-btn');
+        if (!btn) return;
+
+        const type = btn.getAttribute('data-type');
+        const rowElement = btn.closest('.tag-row');
+        const id = parseInt(rowElement.getAttribute('data-index'), 10);
+
+        // Atualiza a estrutura de dados
         const line = rawLinesData.find(l => l.id === id);
         if (line) {
             line.type = type;
-            // Atualiza apenas a classe da linha no DOM para performance
-            const rowElement = document.querySelector(`.tag-row[data-index="${id}"]`);
-            if (rowElement) {
-                rowElement.className = `tag-row type-${type}`;
-            }
+            // Atualiza o DOM pontualmente (muito mais performático do que re-renderizar tudo)
+            rowElement.className = `tag-row type-${type}`;
         }
-    };
+    });
 
     // --- ETAPA 2: MONTAR PAINÉIS BASEADO NA MARCAÇÃO ---
     document.getElementById('btn-montar-paineis').addEventListener('click', () => {
@@ -98,11 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let currentPerson = null;
         let currentTheme = null;
 
-        // Constrói a hierarquia seguindo a ordem das linhas marcadas
         rawLinesData.forEach(line => {
             if (line.type === 'ignore') return;
 
-            // Remove resquícios visuais que a IA possa ter gerado, mantendo apenas o texto útil
             let cleanString = line.text.replace(/📋|📌|\[DEPOIMENTO\]|\[TEMA\]|>\||\|<|>#|#</gi, '')
                                        .replace(/Depoimento de/gi, '')
                                        .replace(/Tema:/gi, '')
@@ -116,7 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } 
             else if (line.type === 'theme') {
                 if (!currentPerson) {
-                    // Prevenção: Se marcar um tema antes de uma parte, cria uma parte genérica
                     currentPerson = { participant: "Parte Não Identificada", themes: [] };
                     parsedData.push(currentPerson);
                 }
@@ -126,14 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } 
             else if (line.type === 'text') {
                 if (currentTheme) {
-                    // Sanitiza o texto de diálogo
-                    let safeDialog = line.text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\*\*/g, '');
+                    // Sanitiza o texto de diálogo também na montagem
+                    let safeDialog = escapeHTML(line.text).replace(/\*\*/g, '');
                     currentTheme.rawDialogue.push(safeDialog);
                 }
             }
         });
 
-        // Aplica o negrito na primeira parte do diálogo (nome de quem fala)
         parsedData.forEach(person => {
             person.themes.forEach(theme => {
                 theme.content = theme.rawDialogue.map(dialogLine => {
@@ -146,7 +158,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Limpa partes vazias
         parsedData = parsedData.filter(p => p.themes.length > 0);
 
         renderWorkspace();
@@ -172,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tag = document.createElement('div');
             tag.classList.add('participant-tag');
-            tag.innerHTML = `<i class="ri-user-voice-fill"></i> <span>${personBlock.participant}</span>`;
+            tag.innerHTML = `<i class="ri-user-voice-fill"></i> <span>${escapeHTML(personBlock.participant)}</span>`;
             blockDiv.appendChild(tag);
 
             personBlock.themes.forEach(theme => {
@@ -187,11 +198,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="time-input-container">
                             <i class="ri-time-line"></i>
                             <input type="text" class="time-input ${savedTime ? 'filled' : ''}" 
-                                   placeholder="00:00" value="${savedTime}" 
+                                   placeholder="00:00" value="${escapeHTML(savedTime)}" 
                                    title="Insira a minutagem">
                         </div>
                         <div class="theme-title">
-                            <span>${theme.title}</span> 
+                            <span>${escapeHTML(theme.title)}</span> 
                             <i class="ri-arrow-down-s-line"></i>
                         </div>
                     </div>
@@ -200,12 +211,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
 
-                // Expansão do painel
+                // Accordion funcionalidade
                 panel.querySelector('.theme-title').addEventListener('click', () => {
                     panel.classList.toggle('open');
                 });
 
-                // Salvamento Automático
+                // Auto-save do input
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
                     const val = e.target.value.trim();
@@ -231,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let hasMarkedThemes = false;
 
         parsedData.forEach(personBlock => {
-            let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${personBlock.participant}</span></h2>`;
+            let personHtml = `<h2><span style="background:#111;color:#f1c40f;padding:4px 8px;border-radius:4px;">👤 ${escapeHTML(personBlock.participant)}</span></h2>`;
             let hasThemesForPerson = false;
 
             personBlock.themes.forEach(theme => {
@@ -241,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     hasMarkedThemes = true;
                     hasThemesForPerson = true;
                     personHtml += `
-                        <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${savedTime}] - 📌 ${theme.title}</h3>
+                        <h3 style="color:#2c3e50; margin-top: 15px;">⏱️ [${escapeHTML(savedTime)}] - 📌 ${escapeHTML(theme.title)}</h3>
                         <div style="padding-left:15px; border-left: 3px solid #ccc; margin-bottom: 20px;">
                             ${theme.content}
                         </div>
@@ -275,13 +286,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('btn-voltar-tagging').addEventListener('click', () => {
-        switchView('tagging');
-    });
-
-    document.getElementById('btn-voltar-workspace').addEventListener('click', () => {
-        switchView('workspace');
-    });
+    document.getElementById('btn-voltar-tagging').addEventListener('click', () => switchView('tagging'));
+    document.getElementById('btn-voltar-workspace').addEventListener('click', () => switchView('workspace'));
 
     document.getElementById('btn-copiar').addEventListener('click', () => {
         const range = document.createRange();
