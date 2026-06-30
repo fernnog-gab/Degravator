@@ -344,8 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="time-input-container">
                             <i class="ri-time-line"></i>
                             <input type="text" class="time-input ${savedTime ? 'filled' : ''}" 
-                                   placeholder="00:00" value="${escapeHTML(savedTime)}" 
-                                   title="Insira a minutagem">
+                                   placeholder="00:00:00" value="${escapeHTML(savedTime)}" 
+                                   title="Insira a minutagem" maxlength="8">
                         </div>
                         <div class="theme-title" style="display:flex; align-items:center; flex-grow:1; justify-content:space-between;">
                             <div>
@@ -395,13 +395,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const inputEl = panel.querySelector('.time-input');
                 inputEl.addEventListener('input', (e) => {
-                    const val = e.target.value.trim();
-                    if (val) {
+                    // Máscara Inteligente HH:MM:SS
+                    let val = e.target.value.replace(/\D/g, ''); // Remove não números
+                    if (val.length > 6) val = val.slice(0, 6); // Limite de 6 dígitos
+                    
+                    // Constrói a formatação com Regex
+                    if (val.length > 4) val = val.replace(/(\d{2})(\d{2})(\d{1,2})/, '$1:$2:$3');
+                    else if (val.length > 2) val = val.replace(/(\d{2})(\d{1,2})/, '$1:$2');
+                    
+                    e.target.value = val; // Atualiza a tela instantaneamente
+
+                    if (val.length >= 5) { // Só salva se for no mínimo MM:SS
                         storage.set(storageKey, val);
                         e.target.classList.add('filled');
-                    } else {
+                    } else if (val.length === 0) {
                         storage.remove(storageKey);
                         e.target.classList.remove('filled');
+                    } else {
+                        e.target.classList.remove('filled'); // Feedback visual de incompleto
                     }
                 });
 
@@ -557,6 +568,57 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 alert('Falha ao copiar. Pressione Ctrl+C para copiar o texto selecionado.');
             }
+        });
+    }
+
+    // =====================================================================
+    // EXPORTAÇÃO PARA MICROSOFT WORD (.DOC)
+    // =====================================================================
+    const btnExportarWord = document.getElementById('btn-exportar-word');
+    if (btnExportarWord) {
+        btnExportarWord.addEventListener('click', () => {
+            // Clona o conteúdo para limpar interações antes do print
+            const contentClone = finalEditableContent.cloneNode(true);
+            contentClone.querySelectorAll('[contenteditable]').forEach(el => {
+                el.removeAttribute('contenteditable');
+                el.style.border = 'none'; // Remove rastros de edição
+            });
+            
+            const htmlContent = contentClone.innerHTML;
+            
+            // Estrutura MHTML nativa exigida pelo Word
+            const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+                                  xmlns:w='urn:schemas-microsoft-com:office:word' 
+                                  xmlns='http://www.w3.org/TR/REC-html40'>
+            <head>
+                <meta charset='utf-8'>
+                <title>Resumo de Degravação</title>
+                <style>
+                    body { font-family: 'Calibri', Arial, sans-serif; font-size: 11pt; }
+                    h1 { font-size: 16pt; color: #333; text-align: center; }
+                    h2 { font-size: 13pt; color: #000; background-color: #f0f0f0; padding: 5px; }
+                    h3 { font-size: 11pt; color: #2c3e50; margin-top: 15px; }
+                    .dialogue-line { margin-bottom: 8px; line-height: 1.5; }
+                </style>
+            </head><body>`;
+            
+            const footer = "</body></html>";
+            const sourceHTML = header + htmlContent + footer;
+            
+            // Tratamento em Blob (Processamento Offline / Memória RAM)
+            const blob = new Blob(['\ufeff', sourceHTML], { type: 'application/msword' });
+            const url = URL.createObjectURL(blob);
+            
+            const fileDownload = document.createElement("a");
+            fileDownload.href = url;
+            // Utiliza o formato .doc para garantia de parsing universal offline
+            fileDownload.download = 'Resumo_Degravacao.doc';
+            document.body.appendChild(fileDownload);
+            fileDownload.click();
+            
+            // Limpeza de cache de memória
+            document.body.removeChild(fileDownload);
+            URL.revokeObjectURL(url);
         });
     }
 });
