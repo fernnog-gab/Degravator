@@ -266,16 +266,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
             parsedData.forEach(person => {
                 person.themes.forEach(theme => {
+                    // 1. Inteligência: Descobrir quem são os oradores únicos deste tema
+                    const speakersSet = new Set();
+                    theme.rawDialogue.forEach(dialogLine => {
+                        const firstColon = dialogLine.indexOf(':');
+                        if (firstColon > 0 && firstColon < 80) {
+                            speakersSet.add(dialogLine.substring(0, firstColon + 1).trim());
+                        }
+                    });
+                    
+                    // Transforma o Set em Array e codifica para o HTML
+                    const themeSpeakers = Array.from(speakersSet);
+                    const safeSpeakersJSON = escapeHTML(JSON.stringify(themeSpeakers));
+
+                    // 2. Montagem do HTML com as Tags Interativas
                     theme.content = theme.rawDialogue.map(dialogLine => {
                         const firstColon = dialogLine.indexOf(':');
                         if (firstColon > 0 && firstColon < 80) {
-                            // Protege o <strong> e torna apenas o depoimento editável
+                            const currentSpeaker = escapeHTML(dialogLine.substring(0, firstColon + 1).trim());
+                            const speechText = escapeHTML(dialogLine.substring(firstColon + 1));
+                            
+                            // Cria a tag com o dataset de opções
                             return `<div class="dialogue-line">
-                                        <strong>${dialogLine.substring(0, firstColon + 1)}</strong>
-                                        <span class="editable-text" contenteditable="true">${dialogLine.substring(firstColon + 1)}</span>
+                                        <span class="speaker-tag" data-options="${safeSpeakersJSON}" title="Clique para trocar o orador">${currentSpeaker}</span>
+                                        <span class="editable-text" contenteditable="true">${speechText}</span>
                                     </div>`;
                         }
-                        return `<div class="dialogue-line"><span class="editable-text" contenteditable="true">${dialogLine}</span></div>`;
+                        return `<div class="dialogue-line"><span class="editable-text" contenteditable="true">${escapeHTML(dialogLine)}</span></div>`;
                     }).join('');
                 });
             });
@@ -360,8 +377,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 copyBtn.addEventListener('click', (e) => {
                     e.stopPropagation(); // Evita conflito com o abrir/fechar do painel
                     
-                    // Decodifica cada linha e junta com quebra de linha dupla para petições
-                    const textToCopy = theme.rawDialogue.map(line => decodeHTML(line)).join('\n\n');
+                    // Lê o texto atualizado diretamente do DOM (garantindo que edições inline e trocas de tag sejam capturadas)
+                    const linesToCopy = Array.from(panel.querySelectorAll('.dialogue-line')).map(line => {
+                        return line.innerText.trim();
+                    });
+                    const textToCopy = linesToCopy.join('\n\n');
                     
                     navigator.clipboard.writeText(textToCopy).then(() => {
                         copyBtn.innerHTML = '<i class="ri-check-double-line"></i>';
@@ -454,6 +474,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
             finalEditableContent.innerHTML = finalHtml;
             switchView('export');
+        });
+    }
+
+    // =====================================================================
+    // MOTOR DAS TAGS DE PALESTRANTES (SPEAKER CYCLING)
+    // =====================================================================
+    if (panelsContainer) {
+        panelsContainer.addEventListener('click', (e) => {
+            const speakerTag = e.target.closest('.speaker-tag');
+            if (speakerTag) {
+                try {
+                    // Recupera o array de oradores únicos daquele tema
+                    const rawOptions = speakerTag.getAttribute('data-options');
+                    // Desfaz o escape HTML (para aspas duplas) e gera o Array
+                    const options = JSON.parse(rawOptions.replace(/&quot;/g, '"'));
+                    
+                    // Se a IA só detectou 1 pessoa falando no tema inteiro, não há o que alternar
+                    if (options.length <= 1) return; 
+
+                    const currentSpeaker = speakerTag.innerText.trim();
+                    let currentIndex = options.indexOf(currentSpeaker);
+                    
+                    // Se não achar (segurança), volta pro índice 0. Se achar, pula +1.
+                    let nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % options.length;
+                    
+                    // Atualiza o texto na tela
+                    speakerTag.innerText = options[nextIndex];
+                    
+                    // Feedback visual animado
+                    speakerTag.classList.add('changed');
+                    setTimeout(() => speakerTag.classList.remove('changed'), 250);
+
+                } catch (err) {
+                    console.error('Erro ao rotacionar palestrante:', err);
+                }
+            }
         });
     }
 

@@ -188,3 +188,36 @@ textarea { width: 100%; height: 400px; padding: 1rem; border: 1px solid var(--bo
     color: var(--success-color); 
     border-color: var(--success-color);
 }
+
+/* --- TAGS INTELIGENTES DE PALESTRANTES --- */
+.speaker-tag {
+    font-weight: bold;
+    color: var(--primary-color);
+    background-color: #f1f3f5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none; /* Evita selecionar o texto ao clicar rápido */
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 0.95em;
+}
+
+.speaker-tag:hover {
+    background-color: #e2e6ea;
+    border-color: #dae0e5;
+    color: #333;
+}
+
+.speaker-tag:active {
+    transform: scale(0.95);
+}
+
+/* Animação rápida de feedback ao alterar o nome */
+.speaker-tag.changed {
+    background-color: #fff3cd;
+    color: #856404;
+    border-color: #ffeeba;
+}
