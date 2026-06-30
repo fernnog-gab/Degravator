@@ -68,7 +68,17 @@ document.addEventListener('DOMContentLoaded', () => {
             lines.forEach((line, index) => {
                 const cleanLine = line.trim();
                 if (cleanLine) {
-                    rawLinesData.push({ id: index, text: cleanLine, type: 'text' });
+                    let initialType = 'text';
+                    const uppercaseText = cleanLine.toUpperCase();
+                    
+                    // Lógica Heurística PROATIVA (Define o tipo real em vez de sugerir cor)
+                    if (uppercaseText.includes('👤') || uppercaseText.includes('DEPOIMENTO DE')) {
+                        initialType = 'participant';
+                    } else if (uppercaseText.includes('📌') || uppercaseText.includes('TEMA:')) {
+                        initialType = 'theme';
+                    }
+                    
+                    rawLinesData.push({ id: index, text: cleanLine, type: initialType });
                 }
             });
 
@@ -76,27 +86,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function renderTaggingList() {
-        const html = rawLinesData.map(line => {
-            const safeText = escapeHTML(line.text);
-            
-            // Lógica Heurística (Inteligência para o fluxo com NotebookLM)
-            let highlightClass = '';
-            if (safeText.includes('👤') || safeText.includes('Depoimento de')) highlightClass = 'highlight-participant';
-            if (safeText.includes('📌') || safeText.includes('Tema:')) highlightClass = 'highlight-theme';
-
-            return `
-                <div class="tag-row type-${line.type} ${highlightClass}" data-index="${line.id}">
-                    <div class="tag-controls">
-                        <button class="t-btn btn-p" data-type="participant" title="Definir como Parte"><i class="ri-user-3-line"></i> Parte</button>
-                        <button class="t-btn btn-t" data-type="theme" title="Definir como Tema"><i class="ri-pushpin-line"></i> Tema</button>
-                        <button class="t-btn btn-txt" data-type="text" title="Definir como Texto"><i class="ri-message-3-line"></i> Texto</button>
-                        <button class="t-btn btn-i" data-type="ignore" title="Ignorar este trecho"><i class="ri-eye-off-line"></i> Ignorar</button>
-                    </div>
-                    <div class="tag-content" data-original-text="${safeText}">${safeText}</div>
+    function generateRowHTML(line) {
+        const safeText = escapeHTML(line.text);
+        return `
+            <div class="tag-row type-${line.type}" data-index="${line.id}">
+                <div class="tag-controls">
+                    <button class="t-btn btn-p" data-type="participant" title="Definir como Parte"><i class="ri-user-3-line"></i> Parte</button>
+                    <button class="t-btn btn-t" data-type="theme" title="Definir como Tema"><i class="ri-pushpin-line"></i> Tema</button>
+                    <button class="t-btn btn-txt" data-type="text" title="Definir como Texto"><i class="ri-message-3-line"></i> Texto</button>
+                    <button class="t-btn btn-i" data-type="ignore" title="Ignorar este trecho"><i class="ri-eye-off-line"></i> Ignorar</button>
                 </div>
-            `;
-        }).join('');
+                <div class="tag-content" data-original-text="${safeText}">${safeText}</div>
+            </div>
+        `;
+    }
+
+    function renderTaggingList() {
+        let html = '';
+        let textBuffer = [];
+        
+        const flushTextBuffer = () => {
+            if (textBuffer.length > 0) {
+                html += `
+                    <div class="text-group-wrapper">
+                        <div class="text-group-header">
+                            <i class="ri-arrow-right-s-line"></i> Textos Ocultos Automáticos (${textBuffer.length} linhas)
+                        </div>
+                        <div class="text-group-content">
+                            ${textBuffer.map(line => generateRowHTML(line)).join('')}
+                        </div>
+                    </div>
+                `;
+                textBuffer = [];
+            }
+        };
+
+        rawLinesData.forEach(line => {
+            if (line.type === 'text') {
+                textBuffer.push(line);
+            } else {
+                flushTextBuffer();
+                html += generateRowHTML(line);
+            }
+        });
+        flushTextBuffer();
 
         try {
             taggingContainer.innerHTML = html;
@@ -111,6 +144,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================================
     if (taggingContainer) {
         taggingContainer.addEventListener('click', (e) => {
+            // 1. Tratamento do clique no Header do Acordeão (Event Delegation)
+            const header = e.target.closest('.text-group-header');
+            if (header) {
+                header.parentElement.classList.toggle('open');
+                return; // Interrompe a execução
+            }
+
+            // 2. Tratamento da reclassificação manual (Mutação Cirúrgica, Sem Re-render)
             const btn = e.target.closest('.t-btn');
             if (!btn) return;
 
@@ -132,8 +173,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             line.type = targetType;
-            // Limpa classes anteriores e aplica a nova base
+            // Atualiza o estado da aplicação e o DOM individual (Performance ganha aqui)
             rowElement.className = `tag-row type-${targetType}`; 
+
+            // UX: Se um texto escondido virou Tema/Parte, força a abertura do contêiner para o usuário ver
+            const parentWrapper = rowElement.closest('.text-group-wrapper');
+            if (parentWrapper && targetType !== 'text' && targetType !== 'ignore') {
+                parentWrapper.classList.add('open');
+            } 
 
             if (targetType === 'ignore') {
                 let endIndex = rawLinesData.length;
@@ -240,6 +287,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Utilitário seguro para reverter Entities
+    const decodeHTML = (html) => {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        return doc.documentElement.textContent;
+    };
+
     function renderWorkspace() {
         panelsContainer.innerHTML = '';
 
@@ -282,8 +335,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="editable-text theme-name" contenteditable="true">${escapeHTML(theme.title)}</span>
                                 <i class="ri-pencil-line edit-icon"></i>
                             </div>
-                            <div class="accordion-toggle" style="cursor:pointer; padding: 5px;">
-                                <i class="ri-arrow-down-s-line" style="font-size:1.5rem;"></i>
+                            <div style="display:flex; align-items:center; gap: 8px;">
+                                <button class="btn-copy-theme" title="Copiar bloco de texto do tema">
+                                    <i class="ri-clipboard-line"></i>
+                                </button>
+                                <div class="accordion-toggle" style="cursor:pointer; padding: 5px;">
+                                    <i class="ri-arrow-down-s-line" style="font-size:1.5rem;"></i>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -295,6 +353,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 // CORREÇÃO CRÍTICA DO EVENT BUBBLING: Restrito apenas ao ícone/div do botão
                 panel.querySelector('.accordion-toggle').addEventListener('click', (e) => {
                     panel.classList.toggle('open');
+                });
+
+                // Evento de cópia do tema (com sanitização reversa)
+                const copyBtn = panel.querySelector('.btn-copy-theme');
+                copyBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Evita conflito com o abrir/fechar do painel
+                    
+                    // Decodifica cada linha e junta com quebra de linha dupla para petições
+                    const textToCopy = theme.rawDialogue.map(line => decodeHTML(line)).join('\n\n');
+                    
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        copyBtn.innerHTML = '<i class="ri-check-double-line"></i>';
+                        copyBtn.style.color = 'var(--success-color)';
+                        setTimeout(() => { 
+                            copyBtn.innerHTML = '<i class="ri-clipboard-line"></i>'; 
+                            copyBtn.style.color = '';
+                        }, 2000);
+                    }).catch(err => alert('Erro ao copiar texto.'));
                 });
 
                 const inputEl = panel.querySelector('.time-input');
